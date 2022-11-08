@@ -9,12 +9,13 @@ struct Cli {
     #[arg(short, long, value_name = "FILE")]
     config: Option<PathBuf>,
 
-    #[command(subcommand)]
-    command: Option<Commands>,
-
     /// alias for the store; default: first in the config, or "main"
     #[arg(short, long)]
     store: Option<String>,
+
+    /// the command to run; "show" if omitted
+    #[command(subcommand)]
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -88,6 +89,25 @@ enum Commands {
         /// add your key to the requested recipients; cleartext or path
         #[arg(index = 1)]
         public_key: String
+    },
+
+    /// show/edit the config
+    Config {
+        /// edit the store-independent options
+        #[arg(long)]
+        global: bool,
+
+        /// list the current config options
+        #[arg(short, long)]
+        list: bool,
+
+        /// the key to change
+        #[arg(index = 1)]
+        key: Option<String>,
+
+        /// the value to set
+        #[arg(index = 2)]
+        value: Option<String>,
     },
 }
 
