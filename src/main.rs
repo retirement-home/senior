@@ -1,6 +1,9 @@
 use std::path::PathBuf;
+use std::env;
+use std::collections::HashMap;
 
 use clap::{Parser, Subcommand};
+use serde_derive::{Serialize, Deserialize};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -37,6 +40,10 @@ enum Commands {
         /// alias for recipient; defaults to the username
         #[arg(long = "recipient-alias")]
         recipient_alias: Option<String>,
+
+        /// the backend to use for age
+        #[arg(long = "age-backend")]
+        age_backend: Option<String>,
     },
 
     /// clones a store from a git repository
@@ -111,19 +118,50 @@ enum Commands {
     },
 }
 
-fn main() {
-    let cli = Cli::parse();
+#[derive(Deserialize, Serialize)]
+struct Config {
+    age_backend: String,
+    stores: HashMap<String, StoreConfig>,
+}
 
-    // You can check the value provided by positional arguments, or option arguments
-    /*
-    if let Some(name) = cli.name.as_deref() {
-        println!("Value for name: {}", name);
-    }
-    */
+#[derive(Deserialize, Serialize)]
+struct StoreConfig {
+    privkey: PathBuf,
+    age_backend: Option<String>,
+}
 
-    if let Some(config_path) = cli.config.as_deref() {
-        println!("Value for config: {}", config_path.display());
+fn main() {// -> Result<(), std::io::Error> {
+    let mut cli = Cli::parse();
+
+    if cli.config == None {
+        cli.config = Some(match env::var_os("XDG_CONFIG_HOME") {
+            Some(val) => PathBuf::from(val),
+            None => PathBuf::from(env::var_os("HOME").unwrap()).join(".config"),
+        }.join("senior/config.toml"));
     }
+    println!("config path: {:?}", cli.config.unwrap());
+
+    let main = StoreConfig {
+        privkey: PathBuf::from("/home/geher/.ssh/id_ed25519_henkenet"),
+        age_backend: Some(String::from("rage")),
+    };
+
+    let other = StoreConfig {
+        privkey: PathBuf::from("/home/geher/.ssh/huso"),
+        age_backend: None,
+    };
+
+    let mut stores = HashMap::new();
+    stores.insert(String::from("main"), main);
+    stores.insert(String::from("other"), other);
+
+    let config = Config {
+        age_backend: String::from("age"),
+        stores: stores,
+    };
+
+    let toml = toml::to_string(&config).unwrap();
+    println!("{}", toml);
 
     // You can see how many times a particular flag or argument occurred
     // Note, only flags can have multiple occurrences
