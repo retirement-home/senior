@@ -63,7 +63,7 @@ enum Commands {
         name: String,
     },
 
-    /// show the otp
+    /// show the one-time password
     Otp {
         /// name of the password file
         #[arg(index = 1)]
@@ -80,7 +80,14 @@ enum Commands {
     AddRecipient {
         /// public key of the new recipient; cleartext or path
         #[arg(index = 1)]
-        publickey: String
+        public_key: String
+    },
+
+    /// request recipient
+    RequestRecipient {
+        /// add your key to the requested recipients; cleartext or path
+        #[arg(index = 1)]
+        public_key: String
     },
 }
 
