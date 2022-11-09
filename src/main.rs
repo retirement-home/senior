@@ -1,11 +1,12 @@
 use std::path::PathBuf;
-use std::env;
+use std::{env, fs};
 use std::collections::HashMap;
 
 use clap::{Parser, Subcommand};
 use serde_derive::{Serialize, Deserialize};
+use which::which;
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
     /// Sets a custom config file
@@ -16,12 +17,17 @@ struct Cli {
     #[arg(short, long)]
     store: Option<String>,
 
+    /// the age backend to use
+    #[arg(long)]
+    age: Option<String>,
+
     /// the command to run; "show" if omitted
     #[command(subcommand)]
     command: Option<Commands>,
+
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum Commands {
     /// initialises a new store
     Init {
@@ -118,19 +124,44 @@ enum Commands {
     },
 }
 
-#[derive(Deserialize, Serialize)]
-struct Config {
-    age_backend: String,
-    stores: HashMap<String, StoreConfig>,
-}
-
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 struct StoreConfig {
     privkey: PathBuf,
     age_backend: Option<String>,
 }
 
-fn main() {// -> Result<(), std::io::Error> {
+#[derive(Deserialize, Serialize, Debug)]
+struct Config {
+    age_backend: String,
+    stores: HashMap<String, StoreConfig>,
+}
+
+fn find_age_backend() -> String {
+    let known_backends = ["rage", "age"];
+    for backend in known_backends {
+        if let Ok(_) = which(backend) {
+            return String::from(backend);
+        }
+    }
+    panic!("Could not find an age backend!");
+}
+
+impl Config {
+    fn default(cli: &Cli) -> Config {
+        Config {
+            age_backend: match &cli.age {
+                Some(backend) => backend.to_string(),
+                None => find_age_backend(),
+            },
+            stores: HashMap::new(),
+        }
+    }
+}
+
+fn init(cli: &Cli, config: &mut Config) {
+}
+
+fn main() {
     let mut cli = Cli::parse();
 
     if cli.config == None {
@@ -139,8 +170,26 @@ fn main() {// -> Result<(), std::io::Error> {
             None => PathBuf::from(env::var_os("HOME").unwrap()).join(".config"),
         }.join("senior/config.toml"));
     }
-    println!("config path: {:?}", cli.config.unwrap());
 
+    let config = match cli.config.as_ref().unwrap().is_file() {
+        true => toml::from_str(&fs::read_to_string(cli.config.as_ref().unwrap()).expect("Unable to read file!")).unwrap(),
+        false => Config::default(&cli),
+    };
+
+    /*
+    if cli.store == None {
+        cli.store = Some(match config.stores.is_empty() {
+            true => String::from("main"),
+            false => config.stores
+        });
+    }
+    */
+
+    println!("{:?}", config);
+
+    //let config: Config = toml::from_str()
+
+    /*
     let main = StoreConfig {
         privkey: PathBuf::from("/home/geher/.ssh/id_ed25519_henkenet"),
         age_backend: Some(String::from("rage")),
@@ -162,32 +211,5 @@ fn main() {// -> Result<(), std::io::Error> {
 
     let toml = toml::to_string(&config).unwrap();
     println!("{}", toml);
-
-    // You can see how many times a particular flag or argument occurred
-    // Note, only flags can have multiple occurrences
-    /*
-    match cli.debug {
-        0 => println!("Debug mode is off"),
-        1 => println!("Debug mode is kind of on"),
-        2 => println!("Debug mode is on"),
-        _ => println!("Don't be crazy"),
-    }
     */
-
-    // You can check for the existence of subcommands, and if found use their
-    // matches just as you would the top level cmd
-    /*
-    match &cli.command {
-        Some(Commands::Test { list }) => {
-            if *list {
-                println!("Printing testing lists...");
-            } else {
-                println!("Not printing testing lists...");
-            }
-        }
-        None => {}
-    }
-    */
-
-    // Continued program logic goes here...
 }
