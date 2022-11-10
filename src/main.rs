@@ -3,16 +3,11 @@ use std::{env, fs};
 use std::collections::HashMap;
 
 use clap::{Parser, Subcommand};
-use serde_derive::{Serialize, Deserialize};
 use which::which;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Sets a custom config file
-    #[arg(short, long, value_name = "FILE")]
-    config: Option<PathBuf>,
-
     /// alias for the store; default: first in the config, or "main"
     #[arg(short, long)]
     store: Option<String>,
@@ -24,7 +19,6 @@ struct Cli {
     /// the command to run; "show" if omitted
     #[command(subcommand)]
     command: Option<Commands>,
-
 }
 
 #[derive(Subcommand, Debug)]
@@ -124,18 +118,6 @@ enum Commands {
     },
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-struct StoreConfig {
-    privkey: PathBuf,
-    age_backend: Option<String>,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-struct Config {
-    age_backend: String,
-    stores: HashMap<String, StoreConfig>,
-}
-
 fn find_age_backend() -> String {
     let known_backends = ["rage", "age"];
     for backend in known_backends {
@@ -146,70 +128,16 @@ fn find_age_backend() -> String {
     panic!("Could not find an age backend!");
 }
 
-impl Config {
-    fn default(cli: &Cli) -> Config {
-        Config {
-            age_backend: match &cli.age {
-                Some(backend) => backend.to_string(),
-                None => find_age_backend(),
-            },
-            stores: HashMap::new(),
-        }
-    }
-}
-
-fn init(cli: &Cli, config: &mut Config) {
+fn init(cli: &Cli) {
 }
 
 fn main() {
     let mut cli = Cli::parse();
 
-    if cli.config == None {
-        cli.config = Some(match env::var_os("XDG_CONFIG_HOME") {
-            Some(val) => PathBuf::from(val),
-            None => PathBuf::from(env::var_os("HOME").unwrap()).join(".config"),
-        }.join("senior/config.toml"));
-    }
-
-    let config = match cli.config.as_ref().unwrap().is_file() {
-        true => toml::from_str(&fs::read_to_string(cli.config.as_ref().unwrap()).expect("Unable to read file!")).unwrap(),
-        false => Config::default(&cli),
-    };
-
-    /*
     if cli.store == None {
         cli.store = Some(match config.stores.is_empty() {
             true => String::from("main"),
             false => config.stores
         });
     }
-    */
-
-    println!("{:?}", config);
-
-    //let config: Config = toml::from_str()
-
-    /*
-    let main = StoreConfig {
-        privkey: PathBuf::from("/home/geher/.ssh/id_ed25519_henkenet"),
-        age_backend: Some(String::from("rage")),
-    };
-
-    let other = StoreConfig {
-        privkey: PathBuf::from("/home/geher/.ssh/huso"),
-        age_backend: None,
-    };
-
-    let mut stores = HashMap::new();
-    stores.insert(String::from("main"), main);
-    stores.insert(String::from("other"), other);
-
-    let config = Config {
-        age_backend: String::from("age"),
-        stores: stores,
-    };
-
-    let toml = toml::to_string(&config).unwrap();
-    println!("{}", toml);
-    */
 }
