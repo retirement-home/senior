@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use std::{env, fs};
-use std::collections::HashMap;
 
 use clap::{Parser, Subcommand};
 use which::which;
@@ -8,7 +7,7 @@ use which::which;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// alias for the store; default: first in the config, or "main"
+    /// alias for the store; default: "main", or the only existing one
     #[arg(short, long)]
     store: Option<String>,
 
@@ -18,7 +17,7 @@ struct Cli {
 
     /// the command to run; "show" if omitted
     #[command(subcommand)]
-    command: Option<Commands>,
+    command: Commands,
 }
 
 #[derive(Subcommand, Debug)]
@@ -78,8 +77,11 @@ enum Commands {
         name: String,
     },
 
-    /// change to the store directory
+    /// change to the store's directory
     Cd {},
+
+    /// show the store's directory path
+    PrintDir {},
 
     /// git pull and push
     Sync {},
@@ -96,25 +98,6 @@ enum Commands {
         /// add your key to the requested recipients; cleartext or path
         #[arg(index = 1)]
         public_key: String
-    },
-
-    /// show/edit the config
-    Config {
-        /// edit the store-independent options
-        #[arg(long)]
-        global: bool,
-
-        /// list the current config options
-        #[arg(short, long)]
-        list: bool,
-
-        /// the key to change
-        #[arg(index = 1)]
-        key: Option<String>,
-
-        /// the value to set
-        #[arg(index = 2)]
-        value: Option<String>,
     },
 }
 
@@ -134,10 +117,26 @@ fn init(cli: &Cli) {
 fn main() {
     let mut cli = Cli::parse();
 
+    let stores_dir = match env::var_os("XDG_DATA_HOME") {
+        Some(val) => PathBuf::from(val),
+        None => PathBuf::from(env::var_os("HOME").unwrap()).join(".local/share"),
+    }.join("senior/stores/");
+
     if cli.store == None {
-        cli.store = Some(match config.stores.is_empty() {
-            true => String::from("main"),
-            false => config.stores
+        cli.store = Some(if stores_dir.is_dir() {
+            let mut entries = stores_dir.read_dir().expect("Could not read stores directory").filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_dir());
+            match (entries.next(), entries.next()) {
+                (Some(entry), None) => entry.unwrap().file_name().into_string().unwrap(),
+                _ => String::from("main"),
+            }
+        } else {
+            String::from("main")
         });
     }
+
+    if cli.age == None {
+        cli.age = Some(find_age_backend());
+    }
+
+    print!("{:?}", cli);
 }
