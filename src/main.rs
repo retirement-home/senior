@@ -1,8 +1,11 @@
 use std::path::PathBuf;
 use std::{env, fs};
+use std::process::Command;
+use std::ffi::OsString;
 
 use clap::{Parser, Subcommand};
 use which::which;
+use tempdir::TempDir;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -24,25 +27,13 @@ struct Cli {
 enum Commands {
     /// initialises a new store
     Init {
-        /// generate new keys
-        #[arg(long)]
-        generate: bool,
-
-        /// private key used for decrypting; cleartext or path
+        /// path of the private key used for decrypting; will be generated if none is supplied
         #[arg(long = "private-key")]
         private_key: Option<String>,
-
-        /// public key used for encrypting; cleartext or path
-        #[arg(long)]
-        recipient: Option<String>,
 
         /// alias for recipient; defaults to the username
         #[arg(long = "recipient-alias")]
         recipient_alias: Option<String>,
-
-        /// the backend to use for age
-        #[arg(long = "age-backend")]
-        age_backend: Option<String>,
     },
 
     /// clones a store from a git repository
@@ -111,7 +102,30 @@ fn find_age_backend() -> String {
     panic!("Could not find an age backend!");
 }
 
-fn init(cli: &Cli) {
+fn init(cli: &Cli, stores_dir: PathBuf, private_key: &Option<String>, recipient_alias: &mut Option<String>) {
+    let store_dir = stores_dir.join(cli.store.as_ref().unwrap());
+    assert!(!store_dir.exists(), "The directory of the store exists already");
+    if recipient_alias == &None {
+        *recipient_alias = Some(env::var_os("USER").expect("Could not get the username").into_string().unwrap());
+    }
+
+    //let (privkeyfile, pubkey) =
+    match private_key {
+        Some(path_string) => {
+            let pathbuf = PathBuf::from(path_string);
+            assert!(pathbuf.is_file(), "supplied path is not a file");
+            (pathbuf, "pubkey")
+        },
+        None => {
+            let tmp_dir = TempDir::new("senior-keygen").expect("Could not create temporary directory");
+            let keypath = tmp_dir.path().join("privkey.txt");
+            let mut age_keygen = cli.age.as_ref().unwrap().clone();
+            age_keygen.push_str("-keygen");
+            let command_output = Command::new(OsString::from(age_keygen)).args(["-o", keypath.to_str().unwrap()]).output().expect("Could not generate key-pair").stdout;
+            let output = String::from_utf8_lossy(&command_output);
+            (keypath, &output["Public key: ".len()..])
+        }
+    };
 }
 
 fn main() {
@@ -136,6 +150,11 @@ fn main() {
 
     if cli.age == None {
         cli.age = Some(find_age_backend());
+    }
+
+    match &cli.command {
+        Commands::Init { private_key, mut recipient_alias, } => init(&cli, stores_dir, private_key, &mut recipient_alias),
+        _ => panic!("Command not yet implemented"),
     }
 
     print!("{:?}", cli);
