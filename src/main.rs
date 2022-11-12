@@ -2,6 +2,8 @@ use std::path::PathBuf;
 use std::{env, fs};
 use std::process::Command;
 use std::ffi::OsString;
+use std::fs::File;
+use std::io::Write;
 
 use clap::{Parser, Subcommand};
 use which::which;
@@ -28,8 +30,8 @@ enum Commands {
     /// initialises a new store
     Init {
         /// path of the private key used for decrypting; will be generated if none is supplied
-        #[arg(long = "private-key")]
-        private_key: Option<String>,
+        #[arg(long = "identity")]
+        identity: Option<String>,
 
         /// alias for recipient; defaults to the username
         #[arg(long = "recipient-alias")]
@@ -102,43 +104,77 @@ fn find_age_backend() -> String {
     panic!("Could not find an age backend!");
 }
 
-fn init(cli: &Cli, stores_dir: PathBuf, private_key: &Option<String>, recipient_alias: &mut Option<String>) {
-    let store_dir = stores_dir.join(cli.store.as_ref().unwrap());
+fn init(cli: &Cli, senior_dir: PathBuf, identity: Option<String>, mut recipient_alias: Option<String>) {
+    let store_dir = senior_dir.join(cli.store.as_ref().unwrap());
     assert!(!store_dir.exists(), "The directory of the store exists already");
-    if recipient_alias == &None {
-        *recipient_alias = Some(env::var_os("USER").expect("Could not get the username").into_string().unwrap());
+
+    // set up default values
+    if recipient_alias == None {
+        recipient_alias = Some(env::var_os("USER").expect("Could not get the username").into_string().unwrap());
     }
 
-    //let (privkeyfile, pubkey) =
-    match private_key {
+    let tmp_dir = TempDir::new("senior-keygen").expect("Could not create temporary directory");
+
+    // TODO: Support password protected identities
+    let (identity_file_src, recipient) = match &identity {
         Some(path_string) => {
             let pathbuf = PathBuf::from(path_string);
-            assert!(pathbuf.is_file(), "supplied path is not a file");
-            (pathbuf, "pubkey")
+            assert!(pathbuf.is_file(), "Supplied identity path is not a file");
+            let content = fs::read_to_string(&pathbuf).expect("Could not read identity file");
+            let pubkey = if content.contains("SSH PRIVATE KEY") {
+                let command = Command::new("ssh-keygen").args(["-y", "-f", &path_string]).output().expect("Could not run ssh-keygen to get public key");
+                String::from_utf8(command.stdout).expect("UTF-8 conversion error")
+            } else {
+                match content.find("public key: ") {
+                    Some(start_index) => {
+                        let substring = &content[(start_index + "public key: ".len())..];
+                        match substring.find("\n") {
+                            Some(end_index) => String::from(&content[(start_index + "public key: ".len())..end_index]),
+                            None => String::from(substring),
+                        }
+                    },
+                    None => panic!("Cannot read public key from identity file"),
+                }
+            };
+            (pathbuf, pubkey)
         },
         None => {
-            let tmp_dir = TempDir::new("senior-keygen").expect("Could not create temporary directory");
-            let keypath = tmp_dir.path().join("privkey.txt");
+            let identity_file = tmp_dir.path().join("identity");
             let mut age_keygen = cli.age.as_ref().unwrap().clone();
             age_keygen.push_str("-keygen");
-            let command_output = Command::new(OsString::from(age_keygen)).args(["-o", keypath.to_str().unwrap()]).output().expect("Could not generate key-pair").stdout;
-            let output = String::from_utf8_lossy(&command_output);
-            (keypath, &output["Public key: ".len()..])
-        }
+            let command = Command::new(OsString::from(age_keygen)).args(["-o", identity_file.to_str().unwrap()]).output().expect("Could not generate key-pair");
+            let output = String::from_utf8_lossy(&command.stderr);
+            (identity_file, String::from(&output["Public key: ".len()..]))
+        },
     };
+
+    let recipients_dir = store_dir.join(".recipients");
+    let recipients_main = recipients_dir.join("main.txt");
+    let recipients_request_dir = store_dir.join(".recipients-request");
+    let gitignore = store_dir.join(".gitignore");
+    let identity_file = store_dir.join(".identity.txt");
+    // TODO: .gitattributes file
+
+    fs::create_dir_all(recipients_dir).expect("Could not create .recipients directory");
+    fs::create_dir_all(recipients_request_dir).expect("Could not create .recipients-request directory");
+    fs::copy(identity_file_src, identity_file).expect("Could not copy .identity file");
+    let mut gitignore_file = File::create(gitignore).expect("Could not create gitignore file");
+    gitignore_file.write_all(b"/.identity.*\n").expect("Could not write gitignore file");
+    let mut recipients_main_file = File::create(recipients_main).expect("Could not create recipients main file");
+    write!(recipients_main_file, "# {}\n{}\n", recipient_alias.unwrap(), recipient).expect("Could not write recipients main file");
 }
 
 fn main() {
     let mut cli = Cli::parse();
 
-    let stores_dir = match env::var_os("XDG_DATA_HOME") {
+    let senior_dir = match env::var_os("XDG_DATA_HOME") {
         Some(val) => PathBuf::from(val),
         None => PathBuf::from(env::var_os("HOME").unwrap()).join(".local/share"),
-    }.join("senior/stores/");
+    }.join("senior/");
 
     if cli.store == None {
-        cli.store = Some(if stores_dir.is_dir() {
-            let mut entries = stores_dir.read_dir().expect("Could not read stores directory").filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_dir());
+        cli.store = Some(if senior_dir.is_dir() {
+            let mut entries = senior_dir.read_dir().expect("Could not read the senior directory").filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_dir());
             match (entries.next(), entries.next()) {
                 (Some(entry), None) => entry.unwrap().file_name().into_string().unwrap(),
                 _ => String::from("main"),
@@ -153,9 +189,7 @@ fn main() {
     }
 
     match &cli.command {
-        Commands::Init { private_key, mut recipient_alias, } => init(&cli, stores_dir, private_key, &mut recipient_alias),
+        Commands::Init { identity, recipient_alias, } => init(&cli, senior_dir, identity.clone(), recipient_alias.clone()),
         _ => panic!("Command not yet implemented"),
     }
-
-    print!("{:?}", cli);
 }
