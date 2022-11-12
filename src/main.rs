@@ -85,14 +85,14 @@ enum Commands {
 
     /// add recipient
     AddRecipient {
-        /// public key of the new recipient; cleartext or path
+        /// public key of the new recipient
         #[arg(index = 1)]
         public_key: String
     },
 
     /// request recipient
     RequestRecipient {
-        /// add your key to the requested recipients; cleartext or path
+        /// add your key to the requested recipients
         #[arg(index = 1)]
         public_key: String
     },
