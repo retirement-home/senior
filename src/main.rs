@@ -229,7 +229,7 @@ fn show(cli: &Cli, store_dir: PathBuf, clip: bool, key: Option<String>, name: St
     match key {
         // show everything, clip the first line
         None => {
-            println!("{}", output);
+            println!("{}", output.trim_right());
         },
         // show the value for the key, clip it
         Some(key) => {
