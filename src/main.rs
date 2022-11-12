@@ -54,8 +54,12 @@ enum Commands {
 
     /// show the password
     Show {
-        /// show only this key
+        /// also add the value to the clipboard
         #[arg(short, long)]
+        clip: bool,
+
+        /// show only this key
+        #[arg(long)]
         key: Option<String>,
 
         /// name of the password file
