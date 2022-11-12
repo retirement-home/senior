@@ -29,7 +29,7 @@ struct Cli {
 enum Commands {
     /// initialises a new store
     Init {
-        /// path of the private key used for decrypting; will be generated if none is supplied
+        /// path of the identity used for decrypting; will be generated if none is supplied
         #[arg(long = "identity")]
         identity: Option<String>,
 
@@ -58,7 +58,7 @@ enum Commands {
         #[arg(short, long)]
         clip: bool,
 
-        /// show only this key
+        /// show only this key; "password" shows the first line
         #[arg(long)]
         key: Option<String>,
 
@@ -132,7 +132,7 @@ fn init(cli: &Cli, store_dir: PathBuf, identity: Option<String>, mut recipient_a
                     Some(start_index) => {
                         let substring = &content[(start_index + "public key: ".len())..];
                         match substring.find("\n") {
-                            Some(end_index) => String::from(&content[(start_index + "public key: ".len())..end_index]),
+                            Some(end_index) => String::from(&substring[..end_index]),
                             None => String::from(substring),
                         }
                     },
@@ -213,6 +213,44 @@ fn edit(cli: &Cli, store_dir: PathBuf, name: String) {
     Command::new(cli.age.as_ref().unwrap()).args(args).status().expect("Could encrypt file");
 }
 
+fn show(cli: &Cli, store_dir: PathBuf, clip: bool, key: Option<String>, name: String) {
+    assert!(store_dir.exists(), "The directory of the store does not exist");
+
+    let mut name_age = name.clone();
+    name_age.push_str(".age");
+    let agefile = store_dir.join(&name_age);
+    assert!(agefile.is_file(), "The password does not exist");
+
+    // decrypt
+    let identity_file = store_dir.join(".identity.txt");
+    let command = Command::new(cli.age.as_ref().unwrap()).args(["-d", "-i", identity_file.to_str().unwrap(), agefile.to_str().unwrap()]).output().expect("Could not run age");
+    let output = String::from_utf8_lossy(&command.stdout);
+    // TODO: clip
+    match key {
+        // show everything, clip the first line
+        None => {
+            println!("{}", output);
+        },
+        // show the value for the key, clip it
+        Some(key) => {
+            if key.trim() == "password" {
+                match output.find("\n") {
+                    None => println!("{}", output),
+                    Some(index) => println!("{}", &output[..index]),
+                };
+            } else {
+                let start_index = output.find(&format!("{}:", &key)).expect("Could not find key");
+                let substring = &output[(start_index + key.len() + 1)..];
+                let value = match substring.find("\n") {
+                    Some(end_index) => String::from(&substring[..end_index]),
+                    None => String::from(substring),
+                };
+                println!("{}", value.trim());
+            }
+        },
+    };
+}
+
 fn main() {
     let mut cli = Cli::parse();
 
@@ -242,6 +280,7 @@ fn main() {
     match &cli.command {
         Commands::Init { identity, recipient_alias, } => init(&cli, store_dir, identity.clone(), recipient_alias.clone()),
         Commands::Edit { name, } => edit(&cli, store_dir, name.clone()),
+        Commands::Show { clip, key, name, } => show(&cli, store_dir, *clip, key.clone(), name.clone()),
         _ => panic!("Command not yet implemented"),
     }
 }
