@@ -104,8 +104,7 @@ fn find_age_backend() -> String {
     panic!("Could not find an age backend!");
 }
 
-fn init(cli: &Cli, senior_dir: PathBuf, identity: Option<String>, mut recipient_alias: Option<String>) {
-    let store_dir = senior_dir.join(cli.store.as_ref().unwrap());
+fn init(cli: &Cli, store_dir: PathBuf, identity: Option<String>, mut recipient_alias: Option<String>) {
     assert!(!store_dir.exists(), "The directory of the store exists already");
 
     // set up default values
@@ -164,6 +163,52 @@ fn init(cli: &Cli, senior_dir: PathBuf, identity: Option<String>, mut recipient_
     write!(recipients_main_file, "# {}\n{}\n", recipient_alias.unwrap(), recipient).expect("Could not write recipients main file");
 }
 
+fn get_editor() -> OsString {
+    match env::var_os("EDITOR") {
+        Some(editor) => editor,
+        None => {
+            let editors = ["nvim", "vim", "emacs", "nano", "vi"];
+            for editor in editors {
+                if let Ok(_) = which(editor) {
+                    return OsString::from(editor);
+                }
+            }
+            panic!("Please set the EDITOR environment variable");
+        }
+    }
+}
+
+fn edit(cli: &Cli, store_dir: PathBuf, name: String) {
+    assert!(store_dir.exists(), "The directory of the store does not exist");
+
+    // decrypt if it exists
+    let identity_file = store_dir.join(".identity.txt");
+    let mut name_age = name.clone();
+    name_age.push_str(".age");
+    let mut name_txt = name.clone();
+    name_txt.push_str(".txt");
+    let agefile = store_dir.join(&name_age);
+    let tmp_dir = TempDir::new("senior").expect("Could not create temporary directory");
+    let tmpfile = tmp_dir.path().join(name_txt);
+    if agefile.is_file() {
+        let status = Command::new(cli.age.as_ref().unwrap()).args(["-d", "-i", identity_file.to_str().unwrap(), "-o", tmpfile.to_str().unwrap(), agefile.to_str().unwrap()]).status().expect("Could not run age");
+        assert!(status.success(), "Error when decrypting file");
+    }
+
+    // edit
+    Command::new(&get_editor()).args([&tmpfile]).status().expect("Could not edit file");
+
+    // encrypt
+    let recipients_dir = store_dir.join(".recipients");
+    let mut args = vec![OsString::from("-e"), OsString::from("-o"), OsString::from(agefile.into_os_string())];
+    for recipient in recipients_dir.read_dir().expect("Could not read the senior directory").filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_file()) {
+        args.push(OsString::from("-R"));
+        args.push(OsString::from(recipient.unwrap().path().into_os_string()));
+    }
+    args.push(tmpfile.into_os_string());
+    Command::new(cli.age.as_ref().unwrap()).args(args).status().expect("Could encrypt file");
+}
+
 fn main() {
     let mut cli = Cli::parse();
 
@@ -184,12 +229,15 @@ fn main() {
         });
     }
 
+    let store_dir = senior_dir.join(cli.store.as_ref().unwrap());
+
     if cli.age == None {
         cli.age = Some(find_age_backend());
     }
 
     match &cli.command {
-        Commands::Init { identity, recipient_alias, } => init(&cli, senior_dir, identity.clone(), recipient_alias.clone()),
+        Commands::Init { identity, recipient_alias, } => init(&cli, store_dir, identity.clone(), recipient_alias.clone()),
+        Commands::Edit { name, } => edit(&cli, store_dir, name.clone()),
         _ => panic!("Command not yet implemented"),
     }
 }
