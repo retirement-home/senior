@@ -4,10 +4,13 @@ use std::process::Command;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::Write;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand};
 use which::which;
 use tempdir::TempDir;
+use base32;
+use thotp;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -58,20 +61,14 @@ enum Commands {
         #[arg(short, long)]
         clip: bool,
 
-        /// show only this key; "password" shows the first line
+        /// show only this key; "password" shows the first line; "otp" generates the one-time
+        /// password
         #[arg(long)]
         key: Option<String>,
 
         /// name of the password file
         #[arg(index = 1)]
         name: Option<String>,
-    },
-
-    /// show the one-time password
-    Otp {
-        /// name of the password file
-        #[arg(index = 1)]
-        name: String,
     },
 
     /// change to the store's directory
@@ -240,27 +237,42 @@ fn show(cli: &Cli, store_dir: PathBuf, clip: bool, key: Option<String>, name: Op
     let (to_print, to_clip) = match key {
         // show everything, clip the first line
         None => {
-            (output.trim_end(), first_line(&output))
+            (String::from(output.trim_end()), String::from(first_line(&output)))
         },
         // show the value for the key, clip it
         Some(key) => {
-            if key.trim() == "password" {
-                (first_line(&output), first_line(&output))
-            } else {
-                let start_index = output.find(&format!("{}:", &key)).expect("Could not find key");
-                let substring = &output[(start_index + key.len() + 1)..];
-                let value = match substring.find("\n") {
-                    Some(end_index) => &substring[..end_index],
-                    None => substring,
-                };
-                (value.trim(), value.trim())
+            match key.trim() {
+                "password" => (String::from(first_line(&output)), String::from(first_line(&output))),
+                mut key => {
+                    if key == "otp" {
+                        key = "otpauth";
+                    }
+                    let start_index = output.find(&format!("{}:", &key)).expect("Could not find key");
+                    let substring = &output[(start_index + key.len() + 1)..];
+                    let value = match substring.find("\n") {
+                        Some(end_index) => &substring[..end_index],
+                        None => substring,
+                    };
+
+                    let mut value = value.trim();
+
+                    if key == "otpauth" {
+                        assert!(value.contains("secret="), "Could not find secret in otp string");
+                        value = value.split_once("secret=").expect("Could not find secret in otp string").1;
+                        value = value.split(&['=', '&']).next().unwrap();
+                        let otp = thotp::otp(&base32::decode(base32::Alphabet::RFC4648 { padding: false }, value).unwrap(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() / 30).unwrap();
+                        (otp.clone(), otp.clone())
+                    } else {
+                        (String::from(value), String::from(value))
+                    }
+                },
             }
         },
     };
     println!("{}", to_print);
     // TODO: support X11, Android, Windows
     if clip {
-        Command::new("wl-copy").args(["-o", to_clip]).status().expect("Could not use clipboard");
+        Command::new("wl-copy").args(["-o", &to_clip]).status().expect("Could not use clipboard");
     }
 }
 
