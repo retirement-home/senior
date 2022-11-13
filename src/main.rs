@@ -64,7 +64,7 @@ enum Commands {
 
         /// name of the password file
         #[arg(index = 1)]
-        name: String,
+        name: Option<String>,
     },
 
     /// show the one-time password
@@ -213,8 +213,16 @@ fn edit(cli: &Cli, store_dir: PathBuf, name: String) {
     Command::new(cli.age.as_ref().unwrap()).args(args).status().expect("Could encrypt file");
 }
 
-fn show(cli: &Cli, store_dir: PathBuf, clip: bool, key: Option<String>, name: String) {
+fn show(cli: &Cli, store_dir: PathBuf, clip: bool, key: Option<String>, name: Option<String>) {
     assert!(store_dir.exists(), "The directory of the store does not exist");
+
+    let name = match name {
+        None => {
+            Command::new("tree").args([&store_dir]).status().expect("Could list directory");
+            return;
+        },
+        Some(name) => name,
+    };
 
     fn first_line(s: &str) -> &str {
         s.split("\n").next().unwrap()
