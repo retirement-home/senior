@@ -16,7 +16,7 @@ struct Cli {
     #[arg(short, long)]
     store: Option<String>,
 
-    /// the age backend to use
+    /// the age backend to use; default: rage, age
     #[arg(long)]
     age: Option<String>,
 
@@ -216,6 +216,10 @@ fn edit(cli: &Cli, store_dir: PathBuf, name: String) {
 fn show(cli: &Cli, store_dir: PathBuf, clip: bool, key: Option<String>, name: String) {
     assert!(store_dir.exists(), "The directory of the store does not exist");
 
+    fn first_line(s: &str) -> &str {
+        s.split("\n").next().unwrap()
+    }
+
     let mut name_age = name.clone();
     name_age.push_str(".age");
     let agefile = store_dir.join(&name_age);
@@ -225,30 +229,31 @@ fn show(cli: &Cli, store_dir: PathBuf, clip: bool, key: Option<String>, name: St
     let identity_file = store_dir.join(".identity.txt");
     let command = Command::new(cli.age.as_ref().unwrap()).args(["-d", "-i", identity_file.to_str().unwrap(), agefile.to_str().unwrap()]).output().expect("Could not run age");
     let output = String::from_utf8_lossy(&command.stdout);
-    // TODO: clip
-    match key {
+    let (to_print, to_clip) = match key {
         // show everything, clip the first line
         None => {
-            println!("{}", output.trim_right());
+            (output.trim_end(), first_line(&output))
         },
         // show the value for the key, clip it
         Some(key) => {
             if key.trim() == "password" {
-                match output.find("\n") {
-                    None => println!("{}", output),
-                    Some(index) => println!("{}", &output[..index]),
-                };
+                (first_line(&output), first_line(&output))
             } else {
                 let start_index = output.find(&format!("{}:", &key)).expect("Could not find key");
                 let substring = &output[(start_index + key.len() + 1)..];
                 let value = match substring.find("\n") {
-                    Some(end_index) => String::from(&substring[..end_index]),
-                    None => String::from(substring),
+                    Some(end_index) => &substring[..end_index],
+                    None => substring,
                 };
-                println!("{}", value.trim());
+                (value.trim(), value.trim())
             }
         },
     };
+    println!("{}", to_print);
+    // TODO: support X11, Android, Windows
+    if clip {
+        Command::new("wl-copy").args(["-o", to_clip]).status().expect("Could not use clipboard");
+    }
 }
 
 fn main() {
