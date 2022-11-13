@@ -72,19 +72,23 @@ enum Commands {
     },
 
     /// change to the store's directory
-    Cd {},
+    Cd,
 
     /// show the store's directory path
-    PrintDir {},
+    PrintDir,
 
     /// git pull and push
-    Sync {},
+    Sync,
 
     /// add recipient
     AddRecipient {
         /// public key of the new recipient
         #[arg(index = 1)]
-        public_key: String
+        public_key: String,
+
+        /// alias of the new recipient
+        #[arg(index = 2)]
+        alias: String,
     },
 
     /// request recipient
@@ -306,6 +310,8 @@ fn main() {
         Commands::Init { identity, recipient_alias, } => init(&cli, store_dir, identity.clone(), recipient_alias.clone()),
         Commands::Edit { name, } => edit(&cli, store_dir, name.clone()),
         Commands::Show { clip, key, name, } => show(&cli, store_dir, *clip, key.clone(), name.clone()),
+        Commands::Cd => env::set_current_dir(store_dir).expect("Could not change directory"),
+        Commands::PrintDir => println!("{}", store_dir.to_str().expect("Could not convert to string")),
         _ => panic!("Command not yet implemented"),
     }
 }
