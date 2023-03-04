@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::{env, fs};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::Write;
@@ -12,10 +12,11 @@ use tempdir::TempDir;
 use base32;
 use thotp;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// alias for the store; default: "main", or the only existing one
+    /// alias for the store; default: "main", or the only existing one,
+    ///                      or for senior clone the name of the repository
     #[arg(short, long)]
     store: Option<String>,
 
@@ -28,7 +29,7 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 enum Commands {
     /// initialises a new store
     Init {
@@ -46,6 +47,10 @@ enum Commands {
         /// address of the remote git repository
         #[arg(index = 1)]
         address: String,
+
+        /// path of the identity used for decrypting; will be generated if none is supplied
+        #[arg(long = "identity")]
+        identity: Option<String>,
     },
 
     /// edit/create a password
@@ -71,14 +76,14 @@ enum Commands {
         name: Option<String>,
     },
 
-    /// change to the store's directory
-    Cd,
-
     /// show the store's directory path
     PrintDir,
 
-    /// git pull and push
-    Sync,
+    /// run git commands in the specified store
+    Git {
+        #[arg(allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
 
     /// add recipient
     AddRecipient {
@@ -89,13 +94,6 @@ enum Commands {
         /// alias of the new recipient
         #[arg(index = 2)]
         alias: String,
-    },
-
-    /// request recipient
-    RequestRecipient {
-        /// add your key to the requested recipients
-        #[arg(index = 1)]
-        public_key: String
     },
 }
 
@@ -109,15 +107,25 @@ fn find_age_backend() -> String {
     panic!("Could not find an age backend!");
 }
 
-fn init(cli: &Cli, store_dir: PathBuf, identity: Option<String>, mut recipient_alias: Option<String>) {
-    assert!(!store_dir.exists(), "The directory of the store exists already");
-
-    // set up default values
-    if recipient_alias == None {
-        recipient_alias = Some(env::var_os("USER").expect("Could not get the username").into_string().unwrap());
+// the store is either the only directory in the senior directory, or "main"
+fn cli_store_and_dir(cli: &mut Cli, senior_dir: &PathBuf) -> PathBuf {
+    if cli.store == None {
+        cli.store = Some(if senior_dir.is_dir() {
+            let mut entries = senior_dir.read_dir().expect("Could not read the senior directory").filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_dir());
+            match (entries.next(), entries.next()) {
+                (Some(entry), None) => entry.unwrap().file_name().into_string().unwrap(),
+                _ => String::from("main"),
+            }
+        } else {
+            String::from("main")
+        });
     }
 
-    let tmp_dir = TempDir::new("senior-keygen").expect("Could not create temporary directory");
+    senior_dir.join(cli.store.as_ref().unwrap())
+}
+
+fn init_identity_file_and_recipient(cli: &Cli, identity: Option<String>) -> (PathBuf, String, TempDir)  {
+    let tmp_dir = TempDir::new("senior-keygen").expect("Could not create a temporary directory.");
 
     // TODO: Support password protected identities
     let (identity_file_src, recipient) = match &identity {
@@ -148,24 +156,65 @@ fn init(cli: &Cli, store_dir: PathBuf, identity: Option<String>, mut recipient_a
             age_keygen.push_str("-keygen");
             let command = Command::new(OsString::from(age_keygen)).args(["-o", identity_file.to_str().unwrap()]).output().expect("Could not generate key-pair");
             let output = String::from_utf8_lossy(&command.stderr);
-            (identity_file, String::from(&output["Public key: ".len()..]))
+            (identity_file, String::from(&output.trim()["Public key: ".len()..]))
         },
     };
 
+    (identity_file_src, recipient, tmp_dir)
+}
+
+fn init(mut cli: Cli, senior_dir: PathBuf, identity: Option<String>, mut recipient_alias: Option<String>) {
+    let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
+    assert!(!store_dir.exists(), "Store \"{}\" already exists in directory {}. Remove it first or use a different store with the -s flag.", cli.store.as_ref().unwrap(), store_dir.display());
+
+    let (identity_file_src, recipient, tmp_dir) = init_identity_file_and_recipient(&cli, identity);
+
+    // set up default values
+    if recipient_alias == None {
+        recipient_alias = Some(env::var_os("USER").expect("Could not get the username. Please manually supply a recipient-alias.").into_string().unwrap());
+    }
+
     let recipients_dir = store_dir.join(".recipients");
     let recipients_main = recipients_dir.join("main.txt");
-    let recipients_request_dir = store_dir.join(".recipients-request");
+    //let recipients_request_dir = store_dir.join(".recipients-request");
     let gitignore = store_dir.join(".gitignore");
     let identity_file = store_dir.join(".identity.txt");
     // TODO: .gitattributes file
 
     fs::create_dir_all(recipients_dir).expect("Could not create .recipients directory");
-    fs::create_dir_all(recipients_request_dir).expect("Could not create .recipients-request directory");
+    //fs::create_dir_all(recipients_request_dir).expect("Could not create .recipients-request directory");
     fs::copy(identity_file_src, identity_file).expect("Could not copy .identity file");
+    drop(tmp_dir);
     let mut gitignore_file = File::create(gitignore).expect("Could not create gitignore file");
     gitignore_file.write_all(b"/.identity.*\n").expect("Could not write gitignore file");
     let mut recipients_main_file = File::create(recipients_main).expect("Could not create recipients main file");
     write!(recipients_main_file, "# {}\n{}\n", recipient_alias.unwrap(), recipient).expect("Could not write recipients main file");
+}
+
+fn git_clone(mut cli: Cli, senior_dir: PathBuf, address: String, identity: Option<String>) {
+    if cli.store == None {
+        let mut store = address.rsplit('/').next().unwrap().to_string();
+        store.truncate(store.len() - 4);
+        cli.store = Some(store);
+    }
+    let store_dir = senior_dir.join(cli.store.as_ref().unwrap());
+    assert!(!store_dir.exists(), "Store \"{}\" already exists in directory {}. Remove it first or use a different store with the -s flag.", cli.store.as_ref().unwrap(), store_dir.display());
+
+    let (identity_file_src, recipient, tmp_dir) = init_identity_file_and_recipient(&cli, identity);
+    let identity_file = store_dir.join(".identity.txt");
+
+    // set up and clone
+    fs::create_dir_all(senior_dir).expect("Could not create senior directory");
+    let status = Command::new("git").args(["clone", &address, store_dir.to_str().unwrap()]).status().expect("Could not run git");
+    assert!(status.success(), "Error when running git clone");
+    fs::copy(identity_file_src, identity_file).expect("Could not copy .identity file");
+    drop(tmp_dir);
+
+    let recipient_alias = env::var_os("USER").unwrap_or("alias_of_recipient".into());
+
+    println!("Tell an owner of the store to add you to the recipients. For this they should run the following command:");
+    println!("senior -s {} add-recipient {} {}", cli.store.as_ref().unwrap(), recipient, recipient_alias.to_str().unwrap());
+    println!("Note that their store name might differ.");
 }
 
 fn get_editor() -> OsString {
@@ -183,8 +232,21 @@ fn get_editor() -> OsString {
     }
 }
 
-fn edit(cli: &Cli, store_dir: PathBuf, name: String) {
-    assert!(store_dir.exists(), "The directory of the store does not exist");
+fn recipients_args(store_dir: &PathBuf) -> Vec<OsString> {
+    let recipients_dir = store_dir.join(".recipients");
+    let mut args = vec![];
+    for recipient in recipients_dir.read_dir().expect("Could not read the .recipients directory").filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_file()) {
+        args.push(OsString::from("-R"));
+        args.push(OsString::from(recipient.unwrap().path().into_os_string()));
+    }
+    args
+}
+
+fn edit(mut cli: Cli, senior_dir: PathBuf, name: String) {
+    let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
+    assert!(store_dir.exists(), "The store directory \"{}\" does not exist", cli.store.unwrap());
+
+    let mut entry_is_new = true;
 
     // decrypt if it exists
     let identity_file = store_dir.join(".identity.txt");
@@ -194,28 +256,51 @@ fn edit(cli: &Cli, store_dir: PathBuf, name: String) {
     name_txt.push_str(".txt");
     let agefile = store_dir.join(&name_age);
     let tmp_dir = TempDir::new("senior").expect("Could not create temporary directory");
-    let tmpfile = tmp_dir.path().join(name_txt);
+    let tmpfile_txt = tmp_dir.path().join(name_txt);
+    let tmpfile_age = tmp_dir.path().join(name_age);
     if agefile.is_file() {
-        let status = Command::new(cli.age.as_ref().unwrap()).args(["-d", "-i", identity_file.to_str().unwrap(), "-o", tmpfile.to_str().unwrap(), agefile.to_str().unwrap()]).status().expect("Could not run age");
+        entry_is_new = false;
+        let status = Command::new(cli.age.as_ref().unwrap()).args(["-d", "-i", identity_file.to_str().unwrap(), "-o", tmpfile_txt.to_str().unwrap(), agefile.to_str().unwrap()]).status().expect("Could not run age");
         assert!(status.success(), "Error when decrypting file");
     }
 
     // edit
-    Command::new(&get_editor()).args([&tmpfile]).status().expect("Could not edit file");
+    let editor = get_editor();
+    Command::new(&editor).args([&tmpfile_txt]).status().expect("Could not edit file");
 
     // encrypt
-    let recipients_dir = store_dir.join(".recipients");
-    let mut args = vec![OsString::from("-e"), OsString::from("-o"), OsString::from(agefile.into_os_string())];
-    for recipient in recipients_dir.read_dir().expect("Could not read the senior directory").filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_file()) {
-        args.push(OsString::from("-R"));
-        args.push(OsString::from(recipient.unwrap().path().into_os_string()));
+    Command::new(cli.age.as_ref().unwrap()).args([OsString::from("-e"), OsString::from("-o"), OsString::from(&tmpfile_age)]).args(recipients_args(&store_dir)).arg(tmpfile_txt.into_os_string()).status().expect("Could not encrypt file");
+
+    // compare
+    if !entry_is_new {
+        let status_code = Command::new("cmp").args([agefile.to_str().unwrap(), tmpfile_age.to_str().unwrap()]).status().expect("Could not encrypt file").code().expect("cmp terminated by signal");
+        match status_code {
+            0 => {
+                println!("File is unchanged");
+                return;
+            },
+            // copy it over if there were changes
+            1 => {},
+            _ => panic!("Unexpected returncode from cmp"),
+        };
     }
-    args.push(tmpfile.into_os_string());
-    Command::new(cli.age.as_ref().unwrap()).args(args).status().expect("Could encrypt file");
+
+    // copy it over if there were changes or the file is new
+    fs::copy(tmpfile_age, &agefile).expect("Could not copy new encrypted file over the old file");
+
+    // this code is only reached if there were changes
+    // check if we use git
+    if Command::new("git").args(["-C", store_dir.to_str().unwrap(), "rev-parse"]).status().expect("Could not run git rev-parse").code().expect("git rev-parse terminated by signal") != 0 { return; }
+    // git add, commit
+    Command::new("git").args(["-C", store_dir.to_str().unwrap(), "add", agefile.to_str().unwrap()]).status().expect("Could not run git add");
+    let message = format!("{} password for {} using {}", if entry_is_new { "Add" } else { "Edit" }, name, editor.to_str().unwrap());
+    Command::new("git").args(["-C", store_dir.to_str().unwrap(), "commit", "-m", &message]).status().expect("Could not run git add");
+    println!("Do not forget to senior -s {} git push", cli.store.unwrap());
 }
 
-fn show(cli: &Cli, store_dir: PathBuf, clip: bool, key: Option<String>, name: Option<String>) {
-    assert!(store_dir.exists(), "The directory of the store does not exist");
+fn show(mut cli: Cli, senior_dir: PathBuf, clip: bool, key: Option<String>, name: Option<String>) {
+    let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
+    assert!(store_dir.exists(), "The store directory \"{}\" does not exist", cli.store.as_ref().unwrap());
 
     let name = match name {
         None => {
@@ -280,6 +365,67 @@ fn show(cli: &Cli, store_dir: PathBuf, clip: bool, key: Option<String>, name: Op
     }
 }
 
+fn git_command(mut cli: Cli, senior_dir: PathBuf, mut args: Vec<String>) {
+    let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
+    assert!(store_dir.exists(), "The store directory \"{}\" does not exist", cli.store.as_ref().unwrap());
+
+    args.insert(0, String::from("-C"));
+    args.insert(1, String::from(store_dir.to_str().unwrap()));
+    Command::new("git").args(args).status().expect("Could not run the git command");
+}
+
+fn add_recipient(mut cli: Cli, senior_dir: PathBuf, public_key: String, alias: String) {
+    let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
+    assert!(store_dir.exists(), "The store directory \"{}\" does not exist", cli.store.as_ref().unwrap());
+
+    let recipients_dir = store_dir.join(".recipients");
+
+    // check if public_key is not already a recipient
+    for recipient in recipients_dir.read_dir().expect("Could not read the .recipients directory").filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_file()) {
+        let content = fs::read_to_string(recipient.as_ref().unwrap().path()).expect("Could not read recipients file");
+        for line in content.lines() {
+            if line.trim().starts_with('#') {
+                continue;
+            }
+            if line.contains(&public_key) {
+                println!("Recipient {} already in {}", &public_key, recipient.unwrap().path().display());
+                return;
+            }
+        }
+    }
+
+    // choose the only existing file or use main.txt
+    let mut entries = recipients_dir.read_dir().expect("Could not read the .recipients directory").filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_dir());
+    let recipients_file = match (entries.next(), entries.next()) {
+        (Some(entry), None) => entry.unwrap().path(),
+        _ => recipients_dir.join("main.txt"),
+    };
+    // add new public_key to the recipients
+    let mut recipients_main_file = File::options().create(true).append(true).open(recipients_file).expect("Could not create/edit/open the main recipients file");
+    write!(recipients_main_file, "# {}\n{}\n", &alias, &public_key).expect("Could not write recipients main file");
+
+    fn reencrypt_recursive(cli: &Cli, cur_dir: PathBuf, identity_file: &str, recipients_args: &Vec<OsString>) {
+        for entry in cur_dir.read_dir().expect("Could not read directory").filter(|entry| !entry.as_ref().unwrap().file_name().to_str().unwrap().starts_with('.')) {
+            if entry.as_ref().unwrap().file_type().unwrap().is_dir() {
+                reencrypt_recursive(cli, entry.as_ref().unwrap().path(), identity_file, recipients_args);
+                break;
+            }
+
+            let entry = entry.as_ref().unwrap().path();
+            let decrypt = Command::new(cli.age.as_ref().unwrap()).args(["-d", "-i", identity_file, entry.to_str().unwrap()]).stdout(Stdio::piped()).spawn().unwrap();
+            let mut encrypt = Command::new(cli.age.as_ref().unwrap()).arg("-e").args(recipients_args).args(["-o", entry.to_str().unwrap()]).stdin(Stdio::from(decrypt.stdout.unwrap())).spawn().unwrap();
+            let output = encrypt.wait().unwrap();
+            if !output.success() {
+                eprintln!("Reencrypted {} with error!", entry.to_str().unwrap());
+            }
+        }
+    }
+
+    let identity_file = store_dir.join(".identity.txt");
+    let recipients = recipients_args(&store_dir);
+    reencrypt_recursive(&cli, store_dir, identity_file.to_str().unwrap(), &recipients);
+}
+
 fn main() {
     let mut cli = Cli::parse();
 
@@ -288,30 +434,17 @@ fn main() {
         None => PathBuf::from(env::var_os("HOME").unwrap()).join(".local/share"),
     }.join("senior/");
 
-    if cli.store == None {
-        cli.store = Some(if senior_dir.is_dir() {
-            let mut entries = senior_dir.read_dir().expect("Could not read the senior directory").filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_dir());
-            match (entries.next(), entries.next()) {
-                (Some(entry), None) => entry.unwrap().file_name().into_string().unwrap(),
-                _ => String::from("main"),
-            }
-        } else {
-            String::from("main")
-        });
-    }
-
-    let store_dir = senior_dir.join(cli.store.as_ref().unwrap());
-
     if cli.age == None {
         cli.age = Some(find_age_backend());
     }
 
     match &cli.command {
-        Commands::Init { identity, recipient_alias, } => init(&cli, store_dir, identity.clone(), recipient_alias.clone()),
-        Commands::Edit { name, } => edit(&cli, store_dir, name.clone()),
-        Commands::Show { clip, key, name, } => show(&cli, store_dir, *clip, key.clone(), name.clone()),
-        Commands::Cd => env::set_current_dir(store_dir).expect("Could not change directory"),
-        Commands::PrintDir => println!("{}", store_dir.to_str().expect("Could not convert to string")),
-        _ => panic!("Command not yet implemented"),
+        Commands::Init { identity, recipient_alias, } => init(cli.clone(), senior_dir, identity.clone(), recipient_alias.clone()),
+        Commands::Clone { address, identity } => git_clone(cli.clone(), senior_dir, address.clone(), identity.clone()),
+        Commands::Edit { name, } => edit(cli.clone(), senior_dir, name.clone()),
+        Commands::Show { clip, key, name, } => show(cli.clone(), senior_dir, *clip, key.clone(), name.clone()),
+        Commands::Git { args, } => git_command(cli.clone(), senior_dir, args.clone()),
+        Commands::AddRecipient { public_key, alias, } => add_recipient(cli.clone(), senior_dir, public_key.clone(), alias.clone()),
+        Commands::PrintDir => println!("{}", cli_store_and_dir(&mut cli.clone(), &senior_dir).display()),
     }
 }
