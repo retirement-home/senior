@@ -257,38 +257,33 @@ fn edit(mut cli: Cli, senior_dir: PathBuf, name: String) {
     let agefile = store_dir.join(&name_age);
     let tmp_dir = TempDir::new("senior").expect("Could not create temporary directory");
     let tmpfile_txt = tmp_dir.path().join(name_txt);
-    let tmpfile_age = tmp_dir.path().join(name_age);
     if agefile.is_file() {
         entry_is_new = false;
         let status = Command::new(cli.age.as_ref().unwrap()).args(["-d", "-i", identity_file.to_str().unwrap(), "-o", tmpfile_txt.to_str().unwrap(), agefile.to_str().unwrap()]).status().expect("Could not run age");
         assert!(status.success(), "Error when decrypting file");
     }
 
+    // save content for comparison
+    let old_content = match entry_is_new {
+        true => vec![],
+        false => fs::read(&tmpfile_txt).expect("Could not read decrypted file"),
+    };
+
     // edit
     let editor = get_editor();
     Command::new(&editor).args([&tmpfile_txt]).status().expect("Could not edit file");
 
-    // encrypt
-    Command::new(cli.age.as_ref().unwrap()).args([OsString::from("-e"), OsString::from("-o"), OsString::from(&tmpfile_age)]).args(recipients_args(&store_dir)).arg(tmpfile_txt.into_os_string()).status().expect("Could not encrypt file");
-
     // compare
-    if !entry_is_new {
-        let status_code = Command::new("cmp").args([agefile.to_str().unwrap(), tmpfile_age.to_str().unwrap()]).status().expect("Could not encrypt file").code().expect("cmp terminated by signal");
-        match status_code {
-            0 => {
-                println!("File is unchanged");
-                return;
-            },
-            // copy it over if there were changes
-            1 => {},
-            _ => panic!("Unexpected returncode from cmp"),
-        };
+    let new_content = fs::read(&tmpfile_txt).expect("Could not read edited file");
+    if old_content == new_content {
+        // unchanged
+        return;
     }
 
-    // copy it over if there were changes or the file is new
-    fs::copy(tmpfile_age, &agefile).expect("Could not copy new encrypted file over the old file");
+    // encrypt
+    Command::new(cli.age.as_ref().unwrap()).args([OsString::from("-e"), OsString::from("-o"), OsString::from(&agefile)]).args(recipients_args(&store_dir)).arg(tmpfile_txt.into_os_string()).status().expect("Could not encrypt file");
+    drop(tmp_dir);
 
-    // this code is only reached if there were changes
     // check if we use git
     if Command::new("git").args(["-C", store_dir.to_str().unwrap(), "rev-parse"]).status().expect("Could not run git rev-parse").code().expect("git rev-parse terminated by signal") != 0 { return; }
     // git add, commit
