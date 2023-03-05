@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+shopt -s nullglob globstar
+
+typeit=0
+if [[ $1 == "--type" ]]; then
+	typeit=1
+	shift
+fi
+
+if [[ -n $WAYLAND_DISPLAY ]]; then
+	dmenu=dmenu-wl
+	xdotool="ydotool type --file /dev/stdin"
+elif [[ -n $DISPLAY ]]; then
+	dmenu=dmenu
+	xdotool="xdotool type --clearmodifiers --file -"
+else
+	echo "Error: No Wayland or X11 display detected" >&2
+	exit 1
+fi
+
+prefix=$(senior print-dir)
+password_files=( "$prefix"/**/*.age )
+password_files=( "${password_files[@]#"$prefix"/}" )
+password_files=( "${password_files[@]%.age}" )
+
+password=$(printf '%s\n' "${password_files[@]}" | "$dmenu")
+
+[[ -n $password ]] || exit
+
+key="$1"
+[ -z "$key" ] && key="password"
+if [[ $typeit -eq 0 ]]; then
+	senior show -c --key "$key" "$password"
+else
+	senior show --key "$key" "$password" | { IFS= read -r pass; printf %s "$pass"; } | $xdotool
+	[ "$key" = "password" ] || [ "$key" = "otp" ] && sleep 0.1 && ydotool key 28:1 28:0
+fi
