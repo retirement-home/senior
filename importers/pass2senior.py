@@ -44,6 +44,9 @@ def main():
                 if "public key:" in line.lower():
                     public_key = line[len("# public key: "):]
                     break
+                elif "openssh" in line.lower():
+                    public_key = subprocess.run(["ssh-keygen", "-y", "-f", identity], capture_output=True, text=True).stdout.strip()
+                    break
 
     recipients_dir = os.path.join(target_dir, ".recipients")
     os.makedirs(recipients_dir, exist_ok=True)
