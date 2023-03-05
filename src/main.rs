@@ -254,6 +254,8 @@ fn edit(mut cli: Cli, senior_dir: PathBuf, name: String) {
     name_age.push_str(".age");
     let mut name_txt = name.clone();
     name_txt.push_str(".txt");
+    let name_txt = PathBuf::from(name_txt);
+    let name_txt = name_txt.file_name().unwrap();
     let agefile = store_dir.join(&name_age);
     let tmp_dir = TempDir::new("senior").expect("Could not create temporary directory");
     let tmpfile_txt = tmp_dir.path().join(name_txt);
@@ -274,18 +276,25 @@ fn edit(mut cli: Cli, senior_dir: PathBuf, name: String) {
     Command::new(&editor).args([&tmpfile_txt]).status().expect("Could not edit file");
 
     // compare
-    let new_content = fs::read(&tmpfile_txt).expect("Could not read edited file");
-    if old_content == new_content {
-        // unchanged
+    if !tmpfile_txt.exists() {
+        println!("No file created");
         return;
     }
+    let new_content = fs::read(&tmpfile_txt).expect("Could not read edited file");
+    if old_content == new_content {
+        println!("File is unchanged");
+        return;
+    }
+
+    // create parent directories
+    fs::create_dir_all(agefile.parent().unwrap()).expect("Could not create parent directory");
 
     // encrypt
     Command::new(cli.age.as_ref().unwrap()).args([OsString::from("-e"), OsString::from("-o"), OsString::from(&agefile)]).args(recipients_args(&store_dir)).arg(tmpfile_txt.into_os_string()).status().expect("Could not encrypt file");
     drop(tmp_dir);
 
     // check if we use git
-    if Command::new("git").args(["-C", store_dir.to_str().unwrap(), "rev-parse"]).status().expect("Could not run git rev-parse").code().expect("git rev-parse terminated by signal") != 0 { return; }
+    if Command::new("git").args(["-C", store_dir.to_str().unwrap(), "rev-parse"]).output().expect("Could not run git rev-parse").status.code().expect("git rev-parse terminated by signal") != 0 { return; }
     // git add, commit
     Command::new("git").args(["-C", store_dir.to_str().unwrap(), "add", agefile.to_str().unwrap()]).status().expect("Could not run git add");
     let message = format!("{} password for {} using {}", if entry_is_new { "Add" } else { "Edit" }, name, editor.to_str().unwrap());
