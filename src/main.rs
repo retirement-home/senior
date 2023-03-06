@@ -245,21 +245,36 @@ fn recipients_args(store_dir: &PathBuf) -> Vec<OsString> {
     args
 }
 
+// resolve symlinks even if the end of the path does not exist
+fn canonicalize(path: PathBuf) -> PathBuf {
+    if path.exists() {
+        path.canonicalize().unwrap().to_path_buf()
+    } else {
+        let filename = path.file_name().unwrap();
+        let parent = path.parent().unwrap().to_path_buf();
+        let parent = canonicalize(parent);
+        parent.join(filename)
+    }
+}
+
 fn edit(mut cli: Cli, senior_dir: PathBuf, name: String) {
-    let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
-    assert!(store_dir.exists(), "The store directory \"{}\" does not exist", cli.store.unwrap());
+    let mut store_dir = cli_store_and_dir(&mut cli, &senior_dir);
+    assert!(store_dir.exists(), "The store directory {} does not exist", store_dir.display());
+
+    let mut name_age = name.clone();
+    name_age.push_str(".age");
+    let agefile = canonicalize(store_dir.join(&name_age));
+    cli.store = Some(agefile.strip_prefix(&senior_dir).expect("Path is outside of the senior directory").iter().next().unwrap().to_str().unwrap().into());
+    store_dir = senior_dir.join(cli.store.as_ref().unwrap());
 
     let mut entry_is_new = true;
 
     // decrypt if it exists
     let identity_file = store_dir.join(".identity.txt");
-    let mut name_age = name.clone();
-    name_age.push_str(".age");
     let mut name_txt = name.clone();
     name_txt.push_str(".txt");
     let name_txt = PathBuf::from(name_txt);
     let name_txt = name_txt.file_name().unwrap();
-    let agefile = store_dir.join(&name_age);
     let tmp_dir = TempDir::new("senior").expect("Could not create temporary directory");
     let tmpfile_txt = tmp_dir.path().join(name_txt);
     if agefile.is_file() {
@@ -306,8 +321,8 @@ fn edit(mut cli: Cli, senior_dir: PathBuf, name: String) {
 }
 
 fn show(mut cli: Cli, senior_dir: PathBuf, clip: bool, key: Option<String>, name: Option<String>) {
-    let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
-    assert!(store_dir.exists(), "The store directory \"{}\" does not exist", cli.store.as_ref().unwrap());
+    let mut store_dir = cli_store_and_dir(&mut cli, &senior_dir);
+    assert!(store_dir.exists(), "The store directory {} does not exist", store_dir.display());
 
     let name = match name {
         None => {
@@ -323,8 +338,12 @@ fn show(mut cli: Cli, senior_dir: PathBuf, clip: bool, key: Option<String>, name
 
     let mut name_age = name.clone();
     name_age.push_str(".age");
-    let agefile = store_dir.join(&name_age);
-    assert!(agefile.is_file(), "The password does not exist");
+    let mut agefile = store_dir.join(&name_age);
+    assert!(agefile.exists(), "The password does not exist");
+
+    agefile = agefile.canonicalize().unwrap();
+    cli.store = Some(agefile.strip_prefix(&senior_dir).expect("Path is outside of the senior directory").iter().next().unwrap().to_str().unwrap().into());
+    store_dir = senior_dir.join(cli.store.as_ref().unwrap());
 
     // decrypt
     let identity_file = store_dir.join(".identity.txt");
@@ -374,7 +393,7 @@ fn show(mut cli: Cli, senior_dir: PathBuf, clip: bool, key: Option<String>, name
 
 fn git_command(mut cli: Cli, senior_dir: PathBuf, mut args: Vec<String>) {
     let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
-    assert!(store_dir.exists(), "The store directory \"{}\" does not exist", cli.store.as_ref().unwrap());
+    assert!(store_dir.exists(), "The store directory {} does not exist", store_dir.display());
 
     args.insert(0, String::from("-C"));
     args.insert(1, String::from(store_dir.to_str().unwrap()));
@@ -419,7 +438,7 @@ fn reencrypt_helper(cli: &Cli, store_dir: PathBuf) -> bool {
 
 fn add_recipient(mut cli: Cli, senior_dir: PathBuf, public_key: String, alias: String) {
     let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
-    assert!(store_dir.exists(), "The store directory \"{}\" does not exist", cli.store.as_ref().unwrap());
+    assert!(store_dir.exists(), "The store directory {} does not exist", store_dir.display());
 
     let recipients_dir = store_dir.join(".recipients");
 
