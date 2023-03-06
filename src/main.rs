@@ -95,6 +95,9 @@ enum Commands {
         #[arg(index = 2)]
         alias: String,
     },
+
+    /// reencrypt the entire store
+    Reencrypt,
 }
 
 fn find_age_backend() -> String {
@@ -378,6 +381,42 @@ fn git_command(mut cli: Cli, senior_dir: PathBuf, mut args: Vec<String>) {
     Command::new("git").args(args).status().expect("Could not run the git command");
 }
 
+// returns whether git is used
+fn reencrypt_helper(cli: &Cli, store_dir: PathBuf) -> bool {
+    fn reencrypt_recursive(cli: &Cli, cur_dir: PathBuf, identity_file: &str, recipients_args: &Vec<OsString>, collect: &mut Vec<PathBuf>) {
+        for entry in cur_dir.read_dir().expect("Could not read directory").filter(|entry| !entry.as_ref().unwrap().file_name().to_str().unwrap().starts_with('.')) {
+            let filetype = entry.as_ref().unwrap().file_type().unwrap();
+            if filetype.is_dir() {
+                reencrypt_recursive(cli, entry.as_ref().unwrap().path(), identity_file, recipients_args, collect);
+                continue;
+            } else if !filetype.is_file() {
+                continue;
+            }
+
+            let entry = entry.as_ref().unwrap().path();
+            let decrypt = Command::new(cli.age.as_ref().unwrap()).args(["-d", "-i", identity_file, entry.to_str().unwrap()]).stdout(Stdio::piped()).spawn().unwrap();
+            let mut encrypt = Command::new(cli.age.as_ref().unwrap()).arg("-e").args(recipients_args).args(["-o", entry.to_str().unwrap()]).stdin(Stdio::from(decrypt.stdout.unwrap())).spawn().unwrap();
+            let output = encrypt.wait().unwrap();
+            if output.success() {
+                collect.push(entry);
+            } else {
+                eprintln!("Reencrypted {} with error!", entry.to_str().unwrap());
+            }
+        }
+    }
+
+    let identity_file = store_dir.join(".identity.txt");
+    let recipients = recipients_args(&store_dir);
+    let mut collect = vec![];
+    reencrypt_recursive(&cli, store_dir.clone(), identity_file.to_str().unwrap(), &recipients, &mut collect);
+
+    // check if we use git
+    if Command::new("git").args(["-C", store_dir.to_str().unwrap(), "rev-parse"]).output().expect("Could not run git rev-parse").status.code().expect("git rev-parse terminated by signal") != 0 { return false; }
+    // git add, commit
+    Command::new("git").args(["-C", store_dir.to_str().unwrap(), "add"]).args(collect).status().expect("Could not run git add");
+    true
+}
+
 fn add_recipient(mut cli: Cli, senior_dir: PathBuf, public_key: String, alias: String) {
     let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
     assert!(store_dir.exists(), "The store directory \"{}\" does not exist", cli.store.as_ref().unwrap());
@@ -405,29 +444,22 @@ fn add_recipient(mut cli: Cli, senior_dir: PathBuf, public_key: String, alias: S
         _ => recipients_dir.join("main.txt"),
     };
     // add new public_key to the recipients
-    let mut recipients_main_file = File::options().create(true).append(true).open(recipients_file).expect("Could not create/edit/open the main recipients file");
+    let mut recipients_main_file = File::options().create(true).append(true).open(&recipients_file).expect("Could not create/edit/open the main recipients file");
     write!(recipients_main_file, "# {}\n{}\n", &alias, &public_key).expect("Could not write recipients main file");
 
-    fn reencrypt_recursive(cli: &Cli, cur_dir: PathBuf, identity_file: &str, recipients_args: &Vec<OsString>) {
-        for entry in cur_dir.read_dir().expect("Could not read directory").filter(|entry| !entry.as_ref().unwrap().file_name().to_str().unwrap().starts_with('.')) {
-            if entry.as_ref().unwrap().file_type().unwrap().is_dir() {
-                reencrypt_recursive(cli, entry.as_ref().unwrap().path(), identity_file, recipients_args);
-                break;
-            }
+    if !reencrypt_helper(&cli, store_dir.clone()) { return; }
 
-            let entry = entry.as_ref().unwrap().path();
-            let decrypt = Command::new(cli.age.as_ref().unwrap()).args(["-d", "-i", identity_file, entry.to_str().unwrap()]).stdout(Stdio::piped()).spawn().unwrap();
-            let mut encrypt = Command::new(cli.age.as_ref().unwrap()).arg("-e").args(recipients_args).args(["-o", entry.to_str().unwrap()]).stdin(Stdio::from(decrypt.stdout.unwrap())).spawn().unwrap();
-            let output = encrypt.wait().unwrap();
-            if !output.success() {
-                eprintln!("Reencrypted {} with error!", entry.to_str().unwrap());
-            }
-        }
-    }
+    Command::new("git").args(["-C", store_dir.to_str().unwrap(), "add", recipients_file.to_str().unwrap()]).status().expect("Could not run git add");
+    let message = format!("Reencrypted store for {}", &alias);
+    Command::new("git").args(["-C", store_dir.to_str().unwrap(), "commit", "-m", &message]).status().expect("Could not run git add");
+}
 
-    let identity_file = store_dir.join(".identity.txt");
-    let recipients = recipients_args(&store_dir);
-    reencrypt_recursive(&cli, store_dir, identity_file.to_str().unwrap(), &recipients);
+fn reencrypt(mut cli: Cli, senior_dir: PathBuf) {
+    let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
+    assert!(store_dir.exists(), "The store directory \"{}\" does not exist", cli.store.as_ref().unwrap());
+
+    if !reencrypt_helper(&cli, store_dir.clone()) { return; }
+    Command::new("git").args(["-C", store_dir.to_str().unwrap(), "commit", "-m", "Reencrypted store"]).status().expect("Could not run git add");
 }
 
 fn main() {
@@ -450,5 +482,6 @@ fn main() {
         Commands::Git { args, } => git_command(cli.clone(), senior_dir, args.clone()),
         Commands::AddRecipient { public_key, alias, } => add_recipient(cli.clone(), senior_dir, public_key.clone(), alias.clone()),
         Commands::PrintDir => println!("{}", cli_store_and_dir(&mut cli.clone(), &senior_dir).display()),
+        Commands::Reencrypt => reencrypt(cli.clone(), senior_dir),
     }
 }
