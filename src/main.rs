@@ -229,7 +229,7 @@ fn git_clone(mut cli: Cli, senior_dir: PathBuf, address: String, identity: Optio
 
     println!("Cloned to {}", store_dir.display());
     println!("Tell an owner of the store to add you to the recipients. For this they should run the following command:");
-    println!("senior -s {} add-recipient {} {}", cli.store.as_ref().unwrap(), recipient, recipient_alias.to_str().unwrap());
+    println!("senior -s {} add-recipient \"{}\" {}", cli.store.as_ref().unwrap(), recipient, recipient_alias.to_str().unwrap());
     println!("Note that their store name might differ.");
 }
 
