@@ -1,13 +1,15 @@
 pkgname=senior
-pkgver=r39.3513e5c
+pkgver=r40.00596ec
 pkgrel=1
 pkgdesc="password manager using age as backend; inspired by pass"
 arch=("any")
+url="https://gitlab.com/retirement-home/senior"
+license=("AGPL3")
 depends=(age wl-clipboard tree)
 optdepends=(git)
 makedepends=(cargo)
-source=("$pkgname"::"git+file://$(pwd)")
-md5sums=('SKIP')
+source=(git+${url}.git)
+md5sums=("SKIP")
 
 pkgver() {
 	cd "$pkgname"
