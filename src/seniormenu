@@ -8,7 +8,15 @@ if [[ $1 == "--type" ]]; then
 	shift
 fi
 
-if [[ -n $WAYLAND_DISPLAY ]]; then
+if [[ $1 == "--dmenu" ]]; then
+	shift
+	arg_dmenu=$1
+	shift
+fi
+
+if [[ -n $arg_dmenu ]]; then
+	dmenu=$arg_dmenu
+elif [[ -n $WAYLAND_DISPLAY ]]; then
 	dmenu=dmenu-wl
 	xdotool="ydotool type --file /dev/stdin"
 elif [[ -n $DISPLAY ]]; then
@@ -24,7 +32,7 @@ password_files=( "$prefix"/**/*.age )
 password_files=( "${password_files[@]#"$prefix"/}" )
 password_files=( "${password_files[@]%.age}" )
 
-password=$(printf '%s\n' "${password_files[@]}" | "$dmenu")
+password=$(printf '%s\n' "${password_files[@]}" | $dmenu)
 
 [[ -n $password ]] || exit
 
