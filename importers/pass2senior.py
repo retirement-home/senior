@@ -29,8 +29,9 @@ def main():
         else:
             target_dir = arg
 
-    if (src_dir is None) or (target_dir is None):
+    if "-h" in sys.argv[1:] or "--help" in sys.argv[1:] or (src_dir is None) or (target_dir is None):
         print("Usage: {} [-i identity_file] <src_dir> <target_dir>".format(sys.argv[0]))
+        sys.exit()
 
     age = find_age_backend()
     tmpdir = tempfile.TemporaryDirectory(suffix="pass2senior")
@@ -57,6 +58,8 @@ def main():
     with open(recipients_main, "w") as f:
         f.write("# {}\n".format(os.environ["USER"]))
         f.write("{}\n".format(public_key))
+    with open(os.path.join(target_dir, ".gitignore"), "w") as f:
+        f.write("/.identity.*\n")
 
     def copy_and_encrypt(dir_path):
         for filename in os.listdir(dir_path):
