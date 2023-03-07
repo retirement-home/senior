@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::{env, fs};
 use std::process::{Command, Stdio};
-use std::ffi::OsString;
+use std::ffi::{OsString, OsStr};
 use std::fs::File;
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -437,14 +437,15 @@ fn reencrypt_helper(cli: &Cli, store_dir: PathBuf) -> bool {
     fn reencrypt_recursive(cli: &Cli, cur_dir: PathBuf, identity_file: &str, recipients_args: &Vec<OsString>, tmp_dir: &PathBuf, collect: &mut Vec<PathBuf>) {
         for entry in cur_dir.read_dir().expect("Could not read directory").filter(|entry| !entry.as_ref().unwrap().file_name().to_str().unwrap().starts_with('.')) {
             let filetype = entry.as_ref().unwrap().file_type().unwrap();
+            let entry = entry.as_ref().unwrap().path();
             if filetype.is_dir() {
-                reencrypt_recursive(cli, entry.as_ref().unwrap().path(), identity_file, recipients_args, tmp_dir, collect);
+                reencrypt_recursive(cli, entry, identity_file, recipients_args, tmp_dir, collect);
                 continue;
-            } else if !filetype.is_file() {
+            } else if !filetype.is_file() || entry.extension() != Some(OsStr::new("age")) {
                 continue;
             }
 
-            let entry = entry.as_ref().unwrap().path();
+
             let tmp_agefile = tmp_dir.join(entry.file_name().unwrap());
             let decrypt = Command::new(cli.age.as_ref().unwrap()).args(["-d", "-i", identity_file, entry.to_str().unwrap()]).stdout(Stdio::piped()).spawn().unwrap();
             let mut encrypt = Command::new(cli.age.as_ref().unwrap()).arg("-e").args(recipients_args).args(["-o", tmp_agefile.to_str().unwrap()]).stdin(Stdio::from(decrypt.stdout.unwrap())).spawn().unwrap();
