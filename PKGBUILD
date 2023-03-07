@@ -1,5 +1,5 @@
 pkgname=senior
-pkgver=r40.00596ec
+pkgver=r42.1067a21
 pkgrel=1
 pkgdesc="password manager using age as backend; inspired by pass"
 arch=("any")
