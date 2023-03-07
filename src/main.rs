@@ -192,6 +192,7 @@ fn init(mut cli: Cli, senior_dir: PathBuf, identity: Option<String>, mut recipie
     gitignore_file.write_all(b"/.identity.*\n").expect("Could not write gitignore file");
     let mut recipients_main_file = File::create(recipients_main).expect("Could not create recipients main file");
     write!(recipients_main_file, "# {}\n{}\n", recipient_alias.unwrap(), recipient).expect("Could not write recipients main file");
+    println!("Created {}", store_dir.display());
 }
 
 fn git_clone(mut cli: Cli, senior_dir: PathBuf, address: String, identity: Option<String>) {
@@ -215,6 +216,7 @@ fn git_clone(mut cli: Cli, senior_dir: PathBuf, address: String, identity: Optio
 
     let recipient_alias = env::var_os("USER").unwrap_or("alias_of_recipient".into());
 
+    println!("Cloned to {}", store_dir.display());
     println!("Tell an owner of the store to add you to the recipients. For this they should run the following command:");
     println!("senior -s {} add-recipient {} {}", cli.store.as_ref().unwrap(), recipient, recipient_alias.to_str().unwrap());
     println!("Note that their store name might differ.");
