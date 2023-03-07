@@ -70,9 +70,20 @@ pub enum Commands {
         #[arg(short, long)]
         recursive: bool,
 
-        /// name of te password file or directory
+        /// name of the password file or directory
         #[arg(index = 1)]
         name: String,
+    },
+
+    /// move a password
+    Mv {
+        /// old name of the password file or directory
+        #[arg(index = 1)]
+        old_name: String,
+
+        /// new name of the password file or directory
+        #[arg(index = 2)]
+        new_name: String,
     },
 
     /// show the store's directory path

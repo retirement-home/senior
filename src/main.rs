@@ -7,7 +7,7 @@ use std::ffi::{OsString, OsStr};
 use std::fs::File;
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
-use clap::{Parser};
+use clap::Parser;
 use tempdir::TempDir;
 use base32;
 use thotp;
@@ -305,23 +305,61 @@ fn show(mut cli: Cli, senior_dir: PathBuf, clip: bool, key: Option<String>, name
     }
 }
 
-fn remove(mut cli: Cli, senior_dir: PathBuf, recursive: bool, mut name: String) {
+fn remove(mut cli: Cli, senior_dir: PathBuf, recursive: bool, name: &str) {
     let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
     assert!(store_dir.exists(), "The store directory {} does not exist", store_dir.display());
-    let dir_path = store_dir.join(&name);
-    name.push_str(".age");
-    let file_path = store_dir.join(name);
-    if recursive && dir_path.is_dir() {
-        println!("Removing {}", dir_path.display());
-        fs::remove_dir_all(dir_path).expect("Could not recursively remove the directory");
-    } else if file_path.is_file() || file_path.is_symlink() {
-        println!("Removing {}", file_path.display());
-        fs::remove_file(file_path).expect("Could not remove the file");
-    } else if dir_path.is_dir() {
-        panic!("Use -r for directories");
+    let mut path = store_dir.join(name);
+    if !path.is_dir() {
+        let mut name_age = name.to_string();
+        name_age.push_str(".age");
+        path = store_dir.join(name_age);
+        if !path.is_file() && !path.is_symlink() {
+            panic!("No such file or directory");
+        }
+        println!("Removing {}", path.display());
+        fs::remove_file(&path).expect("Could not remove the file");
+    } else if recursive {
+        println!("Removing {}", path.display());
+        fs::remove_dir_all(&path).expect("Could not recursively remove the directory");
     } else {
-        panic!("No such file or directory");
+        panic!("Use -r for directories");
     }
+
+    // check if we use git
+    if Command::new("git").args(["-C", store_dir.to_str().unwrap(), "rev-parse"]).output().expect("Could not run git rev-parse").status.code().expect("git rev-parse terminated by signal") != 0 { return; }
+    // git remove, commit
+    Command::new("git").args(["-C", store_dir.to_str().unwrap(), "rm", "-r", path.to_str().unwrap()]).status().expect("Could not run git rm");
+    let message = format!("Remove {}", name);
+    Command::new("git").args(["-C", store_dir.to_str().unwrap(), "commit", "-m", &message]).status().expect("Could not run git commit");
+}
+
+fn move_name(mut cli: Cli, senior_dir: PathBuf, old_name: &str, new_name: &str) {
+    let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
+    assert!(store_dir.exists(), "The store directory {} does not exist", store_dir.display());
+
+    let mut old_path = store_dir.join(old_name);
+    let mut new_path = store_dir.join(new_name);
+    if !old_path.is_dir() {
+        let mut old_name_age = old_name.to_string();
+        old_name_age.push_str(".age");
+        old_path = store_dir.join(old_name_age);
+        if !old_path.is_file() {
+            panic!("No such file or directory");
+        }
+        let mut new_name_age = new_name.to_string();
+        new_name_age.push_str(".age");
+        new_path = store_dir.join(new_name_age);
+    }
+
+    fs::rename(&old_path, &new_path).unwrap();
+
+    // check if we use git
+    if Command::new("git").args(["-C", store_dir.to_str().unwrap(), "rev-parse"]).output().expect("Could not run git rev-parse").status.code().expect("git rev-parse terminated by signal") != 0 { return; }
+    // git add, commit
+    Command::new("git").args(["-C", store_dir.to_str().unwrap(), "rm", "-r", old_path.to_str().unwrap()]).status().expect("Could not run git rm");
+    Command::new("git").args(["-C", store_dir.to_str().unwrap(), "add", new_path.to_str().unwrap()]).status().expect("Could not run git add");
+    let message = format!("Rename {} to {}", old_name, new_name);
+    Command::new("git").args(["-C", store_dir.to_str().unwrap(), "commit", "-m", &message]).status().expect("Could not run git commit");
 }
 
 fn git_command(mut cli: Cli, senior_dir: PathBuf, mut args: Vec<String>) {
@@ -439,6 +477,7 @@ fn main() {
         Commands::AddRecipient { public_key, alias, } => add_recipient(cli.clone(), senior_dir, public_key.clone(), alias.clone()),
         Commands::PrintDir => println!("{}", cli_store_and_dir(&mut cli.clone(), &senior_dir).display()),
         Commands::Reencrypt => reencrypt(cli.clone(), senior_dir),
-        Commands::Rm { recursive, name, } => remove(cli.clone(), senior_dir, *recursive, name.clone()),
+        Commands::Rm { recursive, name, } => remove(cli.clone(), senior_dir, *recursive, name),
+        Commands::Mv { old_name, new_name, } => move_name(cli.clone(), senior_dir, old_name, new_name),
     }
 }
