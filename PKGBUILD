@@ -1,5 +1,5 @@
 pkgname=senior
-pkgver=r46.50cfcab
+pkgver=r48.946bca6
 pkgrel=1
 pkgdesc="password manager using age as backend; inspired by pass"
 arch=("any")
@@ -16,9 +16,13 @@ pkgver() {
 	printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
+build() {
+    cd "$srcdir/$pkgname"
+	cargo build --locked --release --target-dir target
+}
+
 package() {
-    cd "$pkgname"
-	cargo build --release
+    cd "$srcdir/$pkgname"
 	install -Dm755 target/release/senior -t "$pkgdir"/usr/bin/
 	install -Dm644 target/release/build/senior-*/out/_senior -t "$pkgdir"/usr/share/zsh/site-functions/
 	install -Dm644 target/release/build/senior-*/out/senior.bash "$pkgdir"/usr/share/bash-completion/completions/senior
