@@ -3,14 +3,18 @@
 A Password Manager Using [age](https://github.com/FiloSottile/age) as Backend
 
 ## Install
-On arch based systems you can simply use the provided [PKGBUILD](PKGBUILD)
 
+### Arch BASED Systems
+Simply use the provided [PKGBUILD](PKGBUILD)
 ```sh
-SRCDEST=/tmp/senior-src SRCPKGDEST=/tmp/senior-srcpkg PKGDEST=/tmp/senior-pkg BUILDDIR=/tmp/senior-build makepkg -sic ; rm -rf target ; git restore PKGBUILD
+# Download the PKGBUILD into an empty directory
+curl -O "https://gitlab.com/retirement-home/senior/-/raw/main/PKGBUILD"
+# Install the package with all its dependencies
+makepkg -sic
 ```
 
-Otherwise you can use
-
+### Other Systems
+Use cargo to install the package
 ```sh
 cargo install --path .
 ```

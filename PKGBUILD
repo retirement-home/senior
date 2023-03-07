@@ -1,6 +1,6 @@
 # Maintainer: Stefan <stefangehr@protonmail.com>
 pkgname=senior
-pkgver=r50.9927d41
+pkgver=r51.40c24ff
 pkgrel=1
 pkgdesc="password manager using age as backend; inspired by pass"
 arch=("any")
