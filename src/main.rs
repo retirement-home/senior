@@ -227,9 +227,8 @@ fn git_clone(mut cli: Cli, senior_dir: PathBuf, address: String, identity: Optio
 
     let recipient_alias = env::var_os("USER").unwrap_or("alias_of_recipient".into());
 
-    println!("Cloned to {}", store_dir.display());
     println!("Tell an owner of the store to add you to the recipients. For this they should run the following command:");
-    println!("senior -s {} add-recipient \"{}\" {}", cli.store.as_ref().unwrap(), recipient, recipient_alias.to_str().unwrap());
+    println!("senior -s {} add-recipient \"{}\" {}", cli.store.as_ref().unwrap(), recipient.trim(), recipient_alias.to_str().unwrap());
     println!("Note that their store name might differ.");
 }
 
@@ -330,7 +329,6 @@ fn edit(mut cli: Cli, senior_dir: PathBuf, name: String) {
     Command::new("git").args(["-C", store_dir.to_str().unwrap(), "add", agefile.to_str().unwrap()]).status().expect("Could not run git add");
     let message = format!("{} password for {} using {}", if entry_is_new { "Add" } else { "Edit" }, name, editor.to_str().unwrap());
     Command::new("git").args(["-C", store_dir.to_str().unwrap(), "commit", "-m", &message]).status().expect("Could not run git add");
-    println!("Do not forget to senior -s {} git push", cli.store.unwrap());
 }
 
 fn show(mut cli: Cli, senior_dir: PathBuf, clip: bool, key: Option<String>, name: Option<String>) {
