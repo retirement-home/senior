@@ -1,3 +1,5 @@
+pub mod cli;
+
 use std::path::PathBuf;
 use std::{env, fs};
 use std::process::{Command, Stdio};
@@ -5,113 +7,15 @@ use std::ffi::{OsString, OsStr};
 use std::fs::File;
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-use clap::{Parser, Subcommand};
-use which::which;
+use clap::{Parser};
 use tempdir::TempDir;
 use base32;
 use thotp;
+use which::which;
 
-#[derive(Parser, Debug, Clone)]
-#[command(author, version, about, long_about = None)]
-struct Cli {
-    /// alias for the store; default: "main", or the only existing one,
-    ///                      or for senior clone the name of the repository
-    #[arg(short, long)]
-    store: Option<String>,
+use cli::{Cli, Commands};
 
-    /// the age backend to use; default: rage, age
-    #[arg(long)]
-    age: Option<String>,
-
-    /// the command to run; "show" if omitted
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Subcommand, Debug, Clone)]
-enum Commands {
-    /// initialises a new store
-    Init {
-        /// path of the identity used for decrypting; will be generated if none is supplied
-        #[arg(long = "identity")]
-        identity: Option<String>,
-
-        /// alias for recipient; defaults to the username
-        #[arg(long = "recipient-alias")]
-        recipient_alias: Option<String>,
-    },
-
-    /// clones a store from a git repository
-    Clone {
-        /// address of the remote git repository
-        #[arg(index = 1)]
-        address: String,
-
-        /// path of the identity used for decrypting; will be generated if none is supplied
-        #[arg(short, long)]
-        identity: Option<String>,
-    },
-
-    /// edit/create a password
-    Edit {
-        /// name of the password file
-        #[arg(index = 1)]
-        name: String,
-    },
-
-    /// show the password
-    Show {
-        /// also add the value to the clipboard
-        #[arg(short, long)]
-        clip: bool,
-
-        /// show only this key; "password" shows the first line; "otp" generates the one-time
-        /// password
-        #[arg(long)]
-        key: Option<String>,
-
-        /// name of the password file
-        #[arg(index = 1)]
-        name: Option<String>,
-    },
-
-    /// remove a password
-    Rm {
-        /// must be used for directories
-        #[arg(short, long)]
-        recursive: bool,
-
-        /// name of te password file or directory
-        #[arg(index = 1)]
-        name: String,
-    },
-
-    /// show the store's directory path
-    PrintDir,
-
-    /// run git commands in the specified store
-    Git {
-        #[arg(allow_hyphen_values = true)]
-        args: Vec<String>,
-    },
-
-    /// add recipient
-    AddRecipient {
-        /// public key of the new recipient
-        #[arg(index = 1)]
-        public_key: String,
-
-        /// alias of the new recipient
-        #[arg(index = 2)]
-        alias: String,
-    },
-
-    /// reencrypt the entire store
-    Reencrypt,
-}
-
-fn find_age_backend() -> String {
+pub fn find_age_backend() -> String {
     let known_backends = ["rage", "age"];
     for backend in known_backends {
         if let Ok(_) = which(backend) {
@@ -120,7 +24,6 @@ fn find_age_backend() -> String {
     }
     panic!("Could not find an age backend!");
 }
-
 // the store is either the only directory in the senior directory, or "main"
 fn cli_store_and_dir(cli: &mut Cli, senior_dir: &PathBuf) -> PathBuf {
     if cli.store == None {

@@ -7,7 +7,6 @@ edition = "2021"
 
 [[bin]]
 name = "senior"
-path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.0.22", features = ["derive"] }
@@ -15,3 +14,7 @@ which = "4.3.0"
 tempdir = "0.3.7"
 thotp = "0.1"
 base32 = "0.4"
+
+[build-dependencies]
+clap_complete = "4.1.4"
+clap = { version = "4.0.22", features = ["derive"] }
