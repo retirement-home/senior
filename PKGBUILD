@@ -1,10 +1,11 @@
 pkgname=senior
-pkgver=r36.0761d27
+pkgver=r38.b0762ff
 pkgrel=1
 pkgdesc="password manager using age as backend; inspired by pass"
 arch=("any")
 depends=(age wl-clipboard tree)
 optdepends=(git)
+makedepends=(cargo)
 source=("$pkgname"::"git+file://$(pwd)")
 md5sums=('SKIP')
 
