@@ -49,7 +49,7 @@ enum Commands {
         address: String,
 
         /// path of the identity used for decrypting; will be generated if none is supplied
-        #[arg(long = "identity")]
+        #[arg(short, long)]
         identity: Option<String>,
     },
 
@@ -74,6 +74,17 @@ enum Commands {
         /// name of the password file
         #[arg(index = 1)]
         name: Option<String>,
+    },
+
+    /// remove a password
+    Rm {
+        /// must be used for directories
+        #[arg(short, long)]
+        recursive: bool,
+
+        /// name of te password file or directory
+        #[arg(index = 1)]
+        name: String,
     },
 
     /// show the store's directory path
@@ -393,6 +404,25 @@ fn show(mut cli: Cli, senior_dir: PathBuf, clip: bool, key: Option<String>, name
     }
 }
 
+fn remove(mut cli: Cli, senior_dir: PathBuf, recursive: bool, mut name: String) {
+    let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
+    assert!(store_dir.exists(), "The store directory {} does not exist", store_dir.display());
+    let dir_path = store_dir.join(&name);
+    name.push_str(".age");
+    let file_path = store_dir.join(name);
+    if recursive && dir_path.is_dir() {
+        println!("Removing {}", dir_path.display());
+        fs::remove_dir_all(dir_path).expect("Could not recursively remove the directory");
+    } else if file_path.is_file() || file_path.is_symlink() {
+        println!("Removing {}", file_path.display());
+        fs::remove_file(file_path).expect("Could not remove the file");
+    } else if dir_path.is_dir() {
+        panic!("Use -r for directories");
+    } else {
+        panic!("No such file or directory");
+    }
+}
+
 fn git_command(mut cli: Cli, senior_dir: PathBuf, mut args: Vec<String>) {
     let store_dir = cli_store_and_dir(&mut cli, &senior_dir);
     assert!(store_dir.exists(), "The store directory {} does not exist", store_dir.display());
@@ -507,5 +537,6 @@ fn main() {
         Commands::AddRecipient { public_key, alias, } => add_recipient(cli.clone(), senior_dir, public_key.clone(), alias.clone()),
         Commands::PrintDir => println!("{}", cli_store_and_dir(&mut cli.clone(), &senior_dir).display()),
         Commands::Reencrypt => reencrypt(cli.clone(), senior_dir),
+        Commands::Rm { recursive, name, } => remove(cli.clone(), senior_dir, *recursive, name.clone()),
     }
 }
