@@ -14,8 +14,7 @@ makepkg -sic
 ```
 
 ### Other Systems
-Use cargo to install the package
 ```sh
-cargo install --path .
+sudo make install
 ```
 Make sure you have the dependencies installed (look at `depends` and `makedepends` in the [PKGBUILD](PKGBUILD))
