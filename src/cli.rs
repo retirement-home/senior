@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, builder::ValueHint};
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
@@ -22,29 +22,29 @@ pub enum Commands {
     /// initialises a new store
     Init {
         /// path of the identity used for decrypting; will be generated if none is supplied
-        #[arg(long = "identity")]
+        #[arg(short, long)]
         identity: Option<String>,
 
         /// alias for recipient; defaults to the username
-        #[arg(long = "recipient-alias")]
+        #[arg(short = 'a', long = "recipient-alias")]
         recipient_alias: Option<String>,
     },
 
     /// clones a store from a git repository
     Clone {
-        /// address of the remote git repository
-        #[arg(index = 1)]
-        address: String,
-
         /// path of the identity used for decrypting; will be generated if none is supplied
         #[arg(short, long)]
         identity: Option<String>,
+
+        /// address of the remote git repository
+        #[arg(index = 1)]
+        address: String,
     },
 
     /// edit/create a password
     Edit {
         /// name of the password file
-        #[arg(index = 1)]
+        #[arg(index = 1, value_hint = ValueHint::AnyPath)]
         name: String,
     },
 
@@ -60,7 +60,7 @@ pub enum Commands {
         key: Option<String>,
 
         /// name of the password file
-        #[arg(index = 1)]
+        #[arg(index = 1, value_hint = ValueHint::FilePath)]
         name: Option<String>,
     },
 
@@ -71,18 +71,18 @@ pub enum Commands {
         recursive: bool,
 
         /// name of the password file or directory
-        #[arg(index = 1)]
+        #[arg(index = 1, value_hint = ValueHint::AnyPath)]
         name: String,
     },
 
     /// move a password
     Mv {
         /// old name of the password file or directory
-        #[arg(index = 1)]
+        #[arg(index = 1, value_hint = ValueHint::AnyPath)]
         old_name: String,
 
         /// new name of the password file or directory
-        #[arg(index = 2)]
+        #[arg(index = 2, value_hint = ValueHint::AnyPath)]
         new_name: String,
     },
 

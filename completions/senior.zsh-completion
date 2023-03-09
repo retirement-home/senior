@@ -1,0 +1,371 @@
+#compdef senior
+
+autoload -U is-at-least
+
+_senior() {
+	typeset -A opt_args
+	typeset -a _arguments_options
+	local ret=1
+
+	if is-at-least 5.2; then
+		_arguments_options=(-s -S -C)
+	else
+		_arguments_options=(-s -C)
+	fi
+
+	local context curcontext="$curcontext" state line
+	_arguments "${_arguments_options[@]}" \
+		'-s+[alias for the store; default: "main", or the only existing one, or for senior clone the name of the repository]:STORE: ' \
+		'--store=[alias for the store; default: "main", or the only existing one, or for senior clone the name of the repository]:STORE: ' \
+		'--age=[the age backend to use; default: rage, age]:AGE: ' \
+		'-h[Print help]' \
+		'--help[Print help]' \
+		'-V[Print version]' \
+		'--version[Print version]' \
+		":: :_senior_commands" \
+		"*::: :->senior" \
+		&& ret=0
+
+	case $state in
+		(senior)
+			words=($line[1] "${words[@]}")
+			(( CURRENT += 1 ))
+			curcontext="${curcontext%:*:*}:senior-command-$line[1]:"
+			case $line[1] in
+				(init)
+					_arguments "${_arguments_options[@]}" \
+						'--identity=[path of the identity used for decrypting; will be generated if none is supplied]:IDENTITY: ' \
+						'--recipient-alias=[alias for recipient; defaults to the username]:RECIPIENT_ALIAS: ' \
+						'-h[Print help]' \
+						'--help[Print help]' \
+						&& ret=0
+					;;
+				(clone)
+					_arguments "${_arguments_options[@]}" \
+						'-i+[path of the identity used for decrypting; will be generated if none is supplied]:IDENTITY: ' \
+						'--identity=[path of the identity used for decrypting; will be generated if none is supplied]:IDENTITY: ' \
+						'-h[Print help]' \
+						'--help[Print help]' \
+						':address -- address of the remote git repository:' \
+						&& ret=0
+					;;
+				(edit)
+					_arguments "${_arguments_options[@]}" \
+						'-h[Print help]' \
+						'--help[Print help]' \
+						':name -- name of the password file:'
+					_senior_complete_entries_with_subdirs
+					ret=0
+					;;
+				(show)
+					_arguments "${_arguments_options[@]}" \
+						'-k+[show only this key; "password" shows the first line; "otp" generates the one-time password]:KEY: ' \
+						'--key=[show only this key; "password" shows the first line; "otp" generates the one-time password]:KEY: ' \
+						'-c[also add the value to the clipboard]' \
+						'--clip[also add the value to the clipboard]' \
+						'-h[Print help]' \
+						'--help[Print help]' \
+						'::name -- name of the password file:'
+					_senior_complete_entries
+					ret=0
+					;;
+				(rm)
+					_arguments "${_arguments_options[@]}" \
+						'-r[must be used for directories]' \
+						'--recursive[must be used for directories]' \
+						'-h[Print help]' \
+						'--help[Print help]' \
+						':name -- name of the password file or directory:'
+					_senior_complete_entries_with_subdirs
+					ret=0
+					;;
+				(mv)
+					_arguments "${_arguments_options[@]}" \
+						'-h[Print help]' \
+						'--help[Print help]' \
+						':old_name -- old name of the password file or directory:' \
+						':new_name -- new name of the password file or directory:'
+					_senior_complete_entries_with_subdirs
+					ret=0
+					;;
+				(print-dir)
+					_arguments "${_arguments_options[@]}" \
+						'-h[Print help]' \
+						'--help[Print help]' \
+						&& ret=0
+					;;
+				(git)
+					_arguments "${_arguments_options[@]}" \
+						'-h[Print help]' \
+						'--help[Print help]' \
+						'*::args:' \
+						&& ret=0
+					;;
+				(add-recipient)
+					_arguments "${_arguments_options[@]}" \
+						'-h[Print help]' \
+						'--help[Print help]' \
+						':public_key -- public key of the new recipient:' \
+						':alias -- alias of the new recipient:' \
+						&& ret=0
+					;;
+				(reencrypt)
+					_arguments "${_arguments_options[@]}" \
+						'-h[Print help]' \
+						'--help[Print help]' \
+						&& ret=0
+					;;
+				(help)
+					_arguments "${_arguments_options[@]}" \
+						":: :_senior__help_commands" \
+						"*::: :->help" \
+						&& ret=0
+
+					case $state in
+						(help)
+							words=($line[1] "${words[@]}")
+							(( CURRENT += 1 ))
+							curcontext="${curcontext%:*:*}:senior-help-command-$line[1]:"
+							case $line[1] in
+								(init)
+									_arguments "${_arguments_options[@]}" \
+									&& ret=0
+									;;
+								(clone)
+									_arguments "${_arguments_options[@]}" \
+									&& ret=0
+									;;
+								(edit)
+									_arguments "${_arguments_options[@]}" \
+									&& ret=0
+									;;
+								(show)
+									_arguments "${_arguments_options[@]}" \
+									&& ret=0
+									;;
+								(rm)
+									_arguments "${_arguments_options[@]}" \
+									&& ret=0
+									;;
+								(mv)
+									_arguments "${_arguments_options[@]}" \
+									&& ret=0
+									;;
+								(print-dir)
+									_arguments "${_arguments_options[@]}" \
+									&& ret=0
+									;;
+								(git)
+									_arguments "${_arguments_options[@]}" \
+									&& ret=0
+									;;
+								(add-recipient)
+									_arguments "${_arguments_options[@]}" \
+									&& ret=0
+									;;
+								(reencrypt)
+									_arguments "${_arguments_options[@]}" \
+									&& ret=0
+									;;
+								(help)
+									_arguments "${_arguments_options[@]}" \
+									&& ret=0
+									;;
+							esac
+							;;
+					esac
+					;;
+			esac
+			;;
+	esac
+}
+
+(( $+functions[_senior_commands] )) ||
+_senior_commands() {
+	local commands; commands=(
+		'init:initialises a new store' \
+		'clone:clones a store from a git repository' \
+		'edit:edit/create a password' \
+		'show:show the password' \
+		'rm:remove a password' \
+		'mv:move a password' \
+		'print-dir:show the store'\''s directory path' \
+		'git:run git commands in the specified store' \
+		'add-recipient:add recipient' \
+		'reencrypt:reencrypt the entire store' \
+		'help:Print this message or the help of the given subcommand(s)' \
+	)
+	_describe -t commands 'senior commands' commands "$@"
+}
+
+(( $+functions[_senior__add-recipient_commands] )) ||
+_senior__add-recipient_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior add-recipient commands' commands "$@"
+}
+
+(( $+functions[_senior__help__add-recipient_commands] )) ||
+_senior__help__add-recipient_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior help add-recipient commands' commands "$@"
+}
+
+(( $+functions[_senior__clone_commands] )) ||
+_senior__clone_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior clone commands' commands "$@"
+}
+
+(( $+functions[_senior__help__clone_commands] )) ||
+_senior__help__clone_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior help clone commands' commands "$@"
+}
+
+(( $+functions[_senior__edit_commands] )) ||
+_senior__edit_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior edit commands' commands "$@"
+}
+
+(( $+functions[_senior__help__edit_commands] )) ||
+_senior__help__edit_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior help edit commands' commands "$@"
+}
+
+(( $+functions[_senior__git_commands] )) ||
+_senior__git_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior git commands' commands "$@"
+}
+
+(( $+functions[_senior__help__git_commands] )) ||
+_senior__help__git_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior help git commands' commands "$@"
+}
+
+(( $+functions[_senior__help_commands] )) ||
+_senior__help_commands() {
+	local commands; commands=(
+		'init:initialises a new store' \
+		'clone:clones a store from a git repository' \
+		'edit:edit/create a password' \
+		'show:show the password' \
+		'rm:remove a password' \
+		'mv:move a password' \
+		'print-dir:show the store'\''s directory path' \
+		'git:run git commands in the specified store' \
+		'add-recipient:add recipient' \
+		'reencrypt:reencrypt the entire store' \
+		'help:Print this message or the help of the given subcommand(s)' \
+	)
+	_describe -t commands 'senior help commands' commands "$@"
+}
+
+(( $+functions[_senior__help__help_commands] )) ||
+_senior__help__help_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior help help commands' commands "$@"
+}
+
+(( $+functions[_senior__help__init_commands] )) ||
+_senior__help__init_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior help init commands' commands "$@"
+}
+
+(( $+functions[_senior__init_commands] )) ||
+_senior__init_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior init commands' commands "$@"
+}
+
+(( $+functions[_senior__help__mv_commands] )) ||
+_senior__help__mv_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior help mv commands' commands "$@"
+}
+
+(( $+functions[_senior__mv_commands] )) ||
+_senior__mv_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior mv commands' commands "$@"
+}
+
+(( $+functions[_senior__help__print-dir_commands] )) ||
+_senior__help__print-dir_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior help print-dir commands' commands "$@"
+}
+
+(( $+functions[_senior__print-dir_commands] )) ||
+_senior__print-dir_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior print-dir commands' commands "$@"
+}
+
+(( $+functions[_senior__help__reencrypt_commands] )) ||
+_senior__help__reencrypt_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior help reencrypt commands' commands "$@"
+}
+
+(( $+functions[_senior__reencrypt_commands] )) ||
+_senior__reencrypt_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior reencrypt commands' commands "$@"
+}
+
+(( $+functions[_senior__help__rm_commands] )) ||
+_senior__help__rm_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior help rm commands' commands "$@"
+}
+
+(( $+functions[_senior__rm_commands] )) ||
+_senior__rm_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior rm commands' commands "$@"
+}
+
+(( $+functions[_senior__help__show_commands] )) ||
+_senior__help__show_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior help show commands' commands "$@"
+}
+
+(( $+functions[_senior__show_commands] )) ||
+_senior__show_commands() {
+	local commands; commands=()
+	_describe -t commands 'senior show commands' commands "$@"
+}
+
+_senior_complete_entries_helper() {
+	local IFS=$'\n'
+	local prefix
+	local storearg
+	if [[ -n $opt_args[-s] ]]; then
+		storearg=(--store $opt_args[-s])
+	elif [[ -n $opt_args[--store] ]]; then
+		storearg=(--store $opt_args[--store])
+	fi
+	zstyle -s ":completion:${curcontext}:" prefix prefix || prefix=$(senior $storearg print-dir)
+	_values -C 'passwords' ${$(find -L "$prefix" \( -name '.*' \) -prune -o $@ -print 2>/dev/null | sed -e "s#${prefix}/\{0,1\}##" -e 's#\.age##' -e 's#\\#\\\\#g' -e 's#:#\\:#g' | sort):-""}
+}
+
+_senior_complete_entries_with_subdirs () {
+	_senior_complete_entries_helper
+}
+
+_senior_complete_entries () {
+	_senior_complete_entries_helper -type f
+}
+
+if [ "$funcstack[1]" = "_senior" ]; then
+	_senior "$@"
+else
+	compdef _senior senior
+fi
+
