@@ -56,7 +56,7 @@ pub enum Commands {
 
         /// show only this key; "password" shows the first line; "otp" generates the one-time
         /// password
-        #[arg(long)]
+        #[arg(short, long)]
         key: Option<String>,
 
         /// name of the password file

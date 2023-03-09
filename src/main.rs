@@ -234,15 +234,37 @@ fn edit(mut cli: Cli, senior_dir: PathBuf, name: String) {
     Command::new("git").args(["-C", store_dir.to_str().unwrap(), "commit", "-m", &message]).status().expect("Could not run git add");
 }
 
+// returns the index where pattern first occurs
+fn index_of_pattern<'a, T>(slice: &'a [T], pattern: &'a [T]) -> Option<usize> where [T]: PartialEq<[T]> {
+    if slice.len() < pattern.len() {
+        return None;
+    }
+    for search_i in 0..(slice.len() - pattern.len()) {
+        if &slice[search_i..(search_i + pattern.len())] == pattern {
+            return Some(search_i);
+        }
+    }
+    None
+}
+
+// returns the indices where the pattern occurs
+fn indices_of_pattern<'a, T>(slice: &'a [T], pattern: &'a [T]) -> Vec<usize> where [T]: PartialEq<[T]> {
+    let mut ret = vec![];
+    let mut range_start_i = 0;
+    while let Some(new_i) = index_of_pattern(&slice[range_start_i..], pattern) {
+        range_start_i += new_i;
+        ret.push(range_start_i);
+        range_start_i += pattern.len();
+    }
+    ret
+}
+
 fn show(mut cli: Cli, senior_dir: PathBuf, clip: bool, key: Option<String>, name: Option<String>) {
     let mut store_dir = cli_store_and_dir(&mut cli, &senior_dir);
     assert!(store_dir.exists(), "The store directory {} does not exist", store_dir.display());
 
     let name = match name {
-        None => {
-            Command::new("tree").args([&store_dir]).status().expect("Could not list directory");
-            return;
-        },
+        None => String::from(""),
         Some(name) => name,
     };
 
@@ -253,7 +275,43 @@ fn show(mut cli: Cli, senior_dir: PathBuf, clip: bool, key: Option<String>, name
     let mut name_age = name.clone();
     name_age.push_str(".age");
     let mut agefile = store_dir.join(&name_age);
-    assert!(agefile.exists(), "The password does not exist");
+    if !agefile.exists() {
+        // maybe it is just a directory
+        let dir = store_dir.join(&name);
+        assert!(dir.exists(), "The password does not exist");
+
+        // print the directory tree
+        println!("{}",
+            if name.is_empty() {
+                cli.store.as_ref().unwrap()
+            } else {
+                &name
+            });
+
+        let mut output = Command::new("tree").args(["-N", "-C", "-l", "--noreport"]).arg(dir).output().expect("Could not list directory");
+        assert!(output.status.success(), "tree command was not successful");
+
+        // remove the first line
+        // "\n".as_bytes() is 10
+        output.stdout.drain(0..=index_of_pattern(&output.stdout, &[10]).unwrap());
+
+        // add a newline character for the pattern matching
+        output.stdout.push(10);
+
+        // remove the extension from the .age-files
+        // this pattern is ".age\n".as_bytes() WITH the colour encoding for the terminal
+        let pattern = [46, 97, 103, 101, 27, 91, 48, 109, 10];
+        for removal_index in indices_of_pattern(&output.stdout, &pattern).iter().rev() {
+            //                                               -1 to not remove the "\n"
+            output.stdout.drain(*removal_index..(*removal_index + pattern.len() - 1));
+        }
+
+        // remove the empty line at the end again
+        output.stdout.pop().unwrap();
+
+        print!("{}", std::str::from_utf8(&output.stdout).unwrap());
+        return;
+    }
 
     agefile = agefile.canonicalize().unwrap();
     cli.store = Some(agefile.strip_prefix(&senior_dir).expect("Path is outside of the senior directory").iter().next().unwrap().to_str().unwrap().into());
