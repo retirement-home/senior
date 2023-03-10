@@ -14,9 +14,12 @@ _senior() {
 	fi
 
 	local context curcontext="$curcontext" state line
+	local prefix=$(senior print-dir)/..
+	local stores=( ${prefix}/* )
+	stores=( ${stores[@]#"$prefix"/} )
 	_arguments "${_arguments_options[@]}" \
-		'-s+[alias for the store; default: "main", or the only existing one, or for senior clone the name of the repository]:STORE: ' \
-		'--store=[alias for the store; default: "main", or the only existing one, or for senior clone the name of the repository]:STORE: ' \
+		'-s+[alias for the store; default: "main", or the only existing one, or for senior clone the name of the repository]:STORE:'"($stores)" \
+		'--store=[alias for the store; default: "main", or the only existing one, or for senior clone the name of the repository]:STORE:'"($stores)" \
 		'--age=[the age backend to use; default: rage, age]:AGE: ' \
 		'-h[Print help]' \
 		'--help[Print help]' \
@@ -26,6 +29,7 @@ _senior() {
 		"*::: :->senior" \
 		&& ret=0
 
+	set > /tmp/thestate
 	case $state in
 		(senior)
 			words=($line[1] "${words[@]}")
@@ -347,9 +351,9 @@ _senior_complete_entries_helper() {
 	local prefix
 	local storearg
 	if [[ -n $opt_args[-s] ]]; then
-		storearg=(--store $opt_args[-s])
+		storearg=( --store $opt_args[-s] )
 	elif [[ -n $opt_args[--store] ]]; then
-		storearg=(--store $opt_args[--store])
+		storearg=( --store $opt_args[--store] )
 	fi
 	zstyle -s ":completion:${curcontext}:" prefix prefix || prefix=$(senior $storearg print-dir)
 	_values -C 'passwords' ${$(find -L "$prefix" \( -name '.*' \) -prune -o $@ -print 2>/dev/null | sed -e "s#${prefix}/\{0,1\}##" -e 's#\.age##' -e 's#\\#\\\\#g' -e 's#:#\\:#g' | sort):-""}
