@@ -19,7 +19,7 @@ install: clean_completions
 	mkdir -p $(shell dirname $(ZSHCOMPLETION))
 	mkdir -p $(shell dirname $(BASHCOMPLETION))
 	cp target/release/senior $(BINARY)
-	cp target/release/build/senior-*/out/_senior $(ZSHCOMPLETION)
+	cp completions/senior.zsh-completion $(ZSHCOMPLETION)
 	cp target/release/build/senior-*/out/senior.bash $(BASHCOMPLETION)
 
 uninstall:
