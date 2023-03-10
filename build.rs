@@ -9,11 +9,11 @@ fn main() -> Result<(), Error> {
     print!("cargo:rerun-if-changed=build.rs");
     print!("cargo:rerun-if-changed=src/cli.rs");
     let outdir = match env::var_os("OUT_DIR") {
-        None => panic!("Env variable doesn't exist."), 
+        None => panic!("Env variable doesn't exist."),
         Some(outdir) => outdir,
     };
 
-    let mut cmd = Cli::command(); 
+    let mut cmd = Cli::command();
     let bash_path = generate_to(
         Bash,
         &mut cmd, // We need to specify what generator to use

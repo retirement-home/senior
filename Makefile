@@ -13,14 +13,14 @@ howto:
 clean_completions:
 	rm -rf target/release/build/
 
-install: clean_completions
+install:
 	cargo build --release
 	mkdir -p $(shell dirname $(BINARY))
 	mkdir -p $(shell dirname $(ZSHCOMPLETION))
 	mkdir -p $(shell dirname $(BASHCOMPLETION))
 	cp target/release/senior $(BINARY)
 	cp completions/senior.zsh-completion $(ZSHCOMPLETION)
-	cp target/release/build/senior-*/out/senior.bash $(BASHCOMPLETION)
+	cp completions/senior.bash-completion $(BASHCOMPLETION)
 
 uninstall:
 	rm $(BINARY)

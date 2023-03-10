@@ -26,5 +26,5 @@ package() {
 	cd "$pkgname"
 	install -Dm755 target/release/senior -t "$pkgdir"/usr/bin/
 	install -Dm644 completions/senior.zsh-completion "$pkgdir"/usr/share/zsh/site-functions/_senior
-	install -Dm644 target/release/build/senior-*/out/senior.bash "$pkgdir"/usr/share/bash-completion/completions/senior
+	install -Dm644 completions/senior.bash-completion "$pkgdir"/usr/share/bash-completion/completions/senior
 }
