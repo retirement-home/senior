@@ -36,8 +36,7 @@ password=$(printf '%s\n' "${password_files[@]}" | $dmenu)
 
 [[ -n $password ]] || exit
 
-key="$1"
-[ -z "$key" ] && key="password"
+key="${1:-password}"
 if [[ $typeit -eq 0 ]]; then
 	senior show -c --key "$key" "$password"
 else

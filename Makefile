@@ -4,6 +4,7 @@ ifeq ($(PREFIX),)
 	PREFIX := "/usr"
 endif
 BINARY := $(PREFIX)/local/bin/senior
+BINARYMENU := $(PREFIX)/local/bin/seniormenu
 ZSHCOMPLETION := $(PREFIX)/local/share/zsh/site-functions/_senior
 BASHCOMPLETION := $(PREFIX)/local/share/bash-completion/completions/senior
 
@@ -19,11 +20,13 @@ install:
 	mkdir -p $(shell dirname $(ZSHCOMPLETION))
 	mkdir -p $(shell dirname $(BASHCOMPLETION))
 	cp target/release/senior $(BINARY)
+	cp src/seniormenu $(BINARYMENU)
 	cp completions/senior.zsh-completion $(ZSHCOMPLETION)
 	cp completions/senior.bash-completion $(BASHCOMPLETION)
 
 uninstall:
 	rm $(BINARY)
+	rm $(BINARYMENU)
 	rm $(ZSHCOMPLETION)
 	rm $(BASHCOMPLETION)
 
