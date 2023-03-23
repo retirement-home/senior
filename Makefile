@@ -1,7 +1,7 @@
 .PHONY: howto clean_completions install uninstall
 
 ifeq ($(PREFIX),)
-	PREFIX := "/usr"
+PREFIX := /usr
 endif
 BINARY := $(PREFIX)/local/bin/senior
 BINARYMENU := $(PREFIX)/local/bin/seniormenu
