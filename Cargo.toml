@@ -11,6 +11,10 @@ which = "4.3.0"
 tempdir = "0.3.7"
 thotp = "0.1"
 base32 = "0.4"
+rpassword = "7.2.0"
+interprocess = "1.2.1"
+chrono = "0.4.24"
+age = { version = "0.9.1", features = ["ssh"] }
 
 [build-dependencies]
 clap_complete = "4.1.4"

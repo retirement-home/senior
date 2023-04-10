@@ -1,112 +1,111 @@
+use std::ffi::OsString;
+
 use clap::{Parser, Subcommand, builder::ValueHint};
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
-    /// alias for the store; default: "main", or the only existing one,
-    ///                      or for senior clone the name of the repository
+    /// Alias for the store; default: "main", or the only existing one,
+    ///                      or for `senior clone` the name of the repository
     #[arg(short, long)]
-    pub store: Option<String>,
+    pub store: Option<OsString>,
 
-    /// the age backend to use; default: rage, age
-    #[arg(long)]
-    pub age: Option<String>,
-
-    /// the command to run; "show" if omitted
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: CliCommand,
 }
 
 #[derive(Subcommand, Debug, Clone)]
-pub enum Commands {
-    /// initialises a new store
+pub enum CliCommand {
+    /// Initialises a new store
     Init {
-        /// path of the identity used for decrypting; will be generated if none is supplied
-        #[arg(short, long)]
+        /// Path of the identity used for decrypting; default: generate a new one
+        #[arg(short, long, value_name = "FILE", value_hint = ValueHint::AnyPath)]
         identity: Option<String>,
 
-        /// alias for recipient; defaults to the username
-        #[arg(short = 'a', long = "recipient-alias")]
+        /// Alias for recipient; default: your username
+        #[arg(short = 'a', long = "recipient-alias", value_name = "USERNAME")]
         recipient_alias: Option<String>,
     },
 
-    /// clones a store from a git repository
-    Clone {
-        /// path of the identity used for decrypting; will be generated if none is supplied
-        #[arg(short, long)]
+    /// Clones a store from a git repository
+    #[command(name = "clone")]
+    GitClone {
+        /// Path of the identity used for decrypting; default: generate a new one
+        #[arg(short, long, value_name = "FILE", value_hint = ValueHint::AnyPath)]
         identity: Option<String>,
 
-        /// address of the remote git repository
-        #[arg(index = 1)]
+        /// Address of the remote git repository
+        #[arg(index = 1, value_hint = ValueHint::Url)]
         address: String,
     },
 
-    /// edit/create a password
+    /// Edit/create a password
     Edit {
-        /// name of the password file
+        /// Name of the password file
         #[arg(index = 1, value_hint = ValueHint::AnyPath)]
         name: String,
     },
 
-    /// show the password
+    /// Show the password
     Show {
-        /// also add the value to the clipboard
+        /// Show only this key;
+        /// "password" shows the first line;
+        /// "otp" generates the one-time password
+        #[arg(short, long, value_name = "otp|login|email|...")]
+        key: Option<String>,
+
+        /// Add the value to the clipboard
         #[arg(short, long)]
         clip: bool,
 
-        /// show only this key; "password" shows the first line; "otp" generates the one-time
-        /// password
-        #[arg(short, long)]
-        key: Option<String>,
-
-        /// name of the password file
-        #[arg(index = 1, value_hint = ValueHint::FilePath)]
-        name: Option<String>,
-    },
-
-    /// remove a password
-    Rm {
-        /// must be used for directories
-        #[arg(short, long)]
-        recursive: bool,
-
-        /// name of the password file or directory
-        #[arg(index = 1, value_hint = ValueHint::AnyPath)]
+        /// Name of the password file
+        #[arg(index = 1, default_value_t = String::from(""), value_hint = ValueHint::FilePath)]
         name: String,
     },
 
-    /// move a password
+    /// Move a password
     Mv {
-        /// old name of the password file or directory
+        /// Old name of the password file or directory
         #[arg(index = 1, value_hint = ValueHint::AnyPath)]
         old_name: String,
 
-        /// new name of the password file or directory
+        /// New name of the password file or directory
         #[arg(index = 2, value_hint = ValueHint::AnyPath)]
         new_name: String,
     },
 
-    /// show the store's directory path
+    /// Remove a password
+    Rm {
+        /// For directories
+        #[arg(short, long)]
+        recursive: bool,
+
+        /// Name of the password file or directory
+        #[arg(index = 1, value_hint = ValueHint::AnyPath)]
+        name: String,
+    },
+
+    /// Show the directory of the store
     PrintDir,
 
-    /// run git commands in the specified store
+    /// Run git commands in the specified store
     Git {
-        #[arg(allow_hyphen_values = true)]
+        #[arg(allow_hyphen_values = true, trailing_var_arg = true, value_hint = ValueHint::CommandWithArguments)]
         args: Vec<String>,
     },
 
-    /// add recipient
+    /// Add recipient
     AddRecipient {
-        /// public key of the new recipient
-        #[arg(index = 1)]
+        /// Public key of the new recipient
+        #[arg(index = 1, value_name = "PUBLIC KEY")]
         public_key: String,
 
-        /// alias of the new recipient
+        /// Name of the new recipient
         #[arg(index = 2)]
         alias: String,
     },
 
-    /// reencrypt the entire store
+    /// Reencrypt the entire store
     Reencrypt,
 }
 

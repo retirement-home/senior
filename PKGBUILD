@@ -6,7 +6,7 @@ pkgdesc='password manager using age as backend; inspired by pass'
 arch=('any')
 url='https://gitlab.com/retirement-home/senior'
 license=('AGPL3')
-depends=(age wl-clipboard tree)
+depends=(wl-clipboard tree)
 optdepends=(git)
 makedepends=(cargo git)
 source=("git+${url}.git")
@@ -19,7 +19,7 @@ pkgver() {
 
 build() {
 	cd "$pkgname"
-	cargo build --locked --release --target-dir target
+	cargo build --bin senior --locked --release --target-dir target
 }
 
 package() {
