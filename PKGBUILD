@@ -1,6 +1,6 @@
 # Maintainer: Stefan <stefangehr@protonmail.com>
 pkgname=senior
-pkgver=r52.b5aa61f
+pkgver=r67.e9c2e3f
 pkgrel=1
 pkgdesc='password manager using age as backend; inspired by pass'
 arch=('any')
@@ -19,6 +19,7 @@ pkgver() {
 
 build() {
 	cd "$pkgname"
+	export RUSTUP_TOOLCHAIN=nightly
 	cargo build --bins --locked --release --target-dir target
 }
 
