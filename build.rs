@@ -21,7 +21,7 @@ fn main() -> Result<(), Error> {
         &outdir,   // We need to specify where to write to
     ).expect("Failed to generate Bash completion");
 
-    println!("cargo:warning=bash completion file is generated: {:?}", bash_path);
+    println!("cargo:warning=Generated bash completion: {:?}", bash_path);
 
     let zsh_path = generate_to(
         Zsh,
@@ -30,7 +30,6 @@ fn main() -> Result<(), Error> {
         &outdir,   // We need to specify where to write to
     ).expect("Failed to generate Zsh completion");
 
-    println!("cargo:warning=Zsh file is generated: {:?}", zsh_path);
-    println!("cargo:warning=Bash file is generated: {:?}", bash_path);
+    println!("cargo:warning=Generated zsh completion: {:?}", zsh_path);
     Ok(())
 }
