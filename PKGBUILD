@@ -19,13 +19,14 @@ pkgver() {
 
 build() {
 	cd "$pkgname"
-	cargo build --bin senior --locked --release --target-dir target
+	cargo build --bins --locked --release --target-dir target
 }
 
 package() {
 	cd "$pkgname"
 	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 	install -Dm755 target/release/senior -t "$pkgdir"/usr/bin/
+	install -Dm755 target/release/senior-agent -t "$pkgdir"/usr/bin/
 	install -Dm755 src/seniormenu -t "$pkgdir"/usr/bin/
 	install -Dm644 completions/senior.zsh-completion "$pkgdir"/usr/share/zsh/site-functions/_senior
 	install -Dm644 completions/senior.bash-completion "$pkgdir"/usr/share/bash-completion/completions/senior

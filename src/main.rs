@@ -2,12 +2,12 @@
 
 pub mod cli;
 
-use std::{env, iter, str::FromStr};
+use std::{env, str::FromStr};
 use std::path::{Path, PathBuf};
 use std::fs::{self, File};
 use std::process::{Command, Stdio};
 use std::ffi::{OsString, OsStr};
-use std::io::{Write, Read, BufReader, BufRead};
+use std::io::{self, Write, Read, BufReader, BufRead};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::error::Error;
 
@@ -20,8 +20,74 @@ use which::which;
 use tempdir::TempDir;
 use thotp;
 use base32;
+use interprocess::local_socket::{LocalSocketStream, NameTypeSupport};
+use sysinfo::{System, SystemExt};
 
 use cli::{Cli, CliCommand};
+
+fn agent_socket_name() -> &'static str {
+     use NameTypeSupport::*;
+     match NameTypeSupport::query() {
+         OnlyPaths => "/tmp/senior-agent.sock",
+         OnlyNamespaced | Both => "@senior-agent.sock",
+     }
+}
+
+// returns Ok(None) if the connection to the agent fails (because it is probably not running)
+// returns Ok(None) if the agent does not have the password
+fn agent_get_passphrase(key: &str) -> Result<Option<String>, Box<dyn Error>> {
+    let mut buffer = String::new();
+    let conn = match LocalSocketStream::connect(agent_socket_name()) {
+        Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => return Ok(None),
+        x => x?,
+    };
+    let mut conn = BufReader::new(conn);
+    conn.get_mut().write_all(format!("r {}\n", key.replace(r"\", r"\\").replace(" ", r"\ ")).as_bytes())?;
+    conn.read_line(&mut buffer)?;
+    // remove trailing newline
+    buffer.pop();
+    match &buffer[0..1] {
+        "o" => { buffer.drain(..3); Ok(Some(buffer)) },
+        _ => Ok(None),
+    }
+}
+
+fn agent_set_passphrase(key: &str, passphrase: &str) -> Result<(), Box<dyn Error>> {
+    let agent_is_running = System::new_all().processes_by_exact_name("senior-agent").next().and(Some(true)).unwrap_or(false);
+    let mut once = true;
+    let conn = loop {
+        match LocalSocketStream::connect(agent_socket_name()) {
+            Err(e) if once && !agent_is_running && e.kind() == io::ErrorKind::ConnectionRefused => {
+                once = false;
+                let child = Command::new("senior-agent").stdin(Stdio::null()).stdout(Stdio::piped()).spawn()?;
+                let mut child_stdout = String::new();
+                BufReader::new(child.stdout.unwrap()).read_line(&mut child_stdout)?;
+                child_stdout.pop();
+                if child_stdout.starts_with("Ready") {
+                    continue;
+                } else {
+                    return Err(format!("senior-agent: {}", &child_stdout).into());
+                }
+            },
+            x => break x?,
+        }
+    };
+    let mut conn = BufReader::new(conn);
+    conn.get_mut().write_all(format!("w {} {}\n", key.replace(r"\", r"\\").replace(" ", r"\ "), passphrase).as_bytes())?;
+    Ok(())
+}
+
+// return value: second value in tuple is whether the agent was used
+fn get_or_ask_passphrase(key: &str, try_counter: &mut u32) -> Result<(String, bool), Box<dyn Error>> {
+    *try_counter += 1;
+    Ok(match try_counter {
+        1 => match agent_get_passphrase(key)? {
+                None => (rpassword::prompt_password("Enter passphrase: ")?, false),
+                Some(p) => (p, true),
+            },
+        _ => (rpassword::prompt_password("Enter passphrase: ")?, false),
+    })
+}
 
 fn ask_passphrase_twice() -> std::io::Result<String> {
     loop {
@@ -233,52 +299,63 @@ fn canonicalise(path: &Path) -> std::io::Result<PathBuf> {
     }
 }
 
-fn decrypt_password(identity_file: &Path, agefile: &Path) -> Result<age::stream::StreamReader<File>, Box<dyn Error>> {
+fn decrypt_password(identity_file: &Path, agefile: &Path, identities: &mut Vec<Box<dyn age::Identity>>) -> Result<age::stream::StreamReader<File>, Box<dyn Error>> {
     let password_decryptor = match age::Decryptor::new(File::open(&agefile)?)? {
         age::Decryptor::Recipients(d) => d,
         _ => return Err(format!("The supplied age-file {} should be encrypted for recipients, not with a passphrase!", agefile.display()).into()),
     };
 
-    match identity_file.extension().unwrap().to_str().unwrap() {
-        "txt" => { // clear text identity
-            let identities = age::IdentityFile::from_file(identity_file.to_str().unwrap().to_owned())?.into_identities();
-            Ok(password_decryptor.decrypt(identities.iter().map(|i| match i {
-                age::IdentityFileEntry::Native(i) => i as &dyn age::Identity,
-            }))?)
-        },
-        "age" => loop { // passphrase age encrypted identity
-            let identity_decryptor = match age::Decryptor::new(File::open(&identity_file)?)? {
-                age::Decryptor::Passphrase(d) => d,
-                _ => return Err(format!("The identity file {} should be encrypted with a passphrase, not with recipients/identities!", identity_file.display()).into()),
-            };
-            let pass = rpassword::prompt_password("Enter passphrase: ")?;
-            let reader = match identity_decryptor.decrypt(&Secret::new(pass), Some(18)) {
-                Ok(r) => r,
-                Err(age::DecryptError::DecryptionFailed) => { eprintln!("Decryption failed. Wrong passphrase? Please try again."); continue; }
-                Err(e) => return Err(Box::new(e)),
-            };
-            let identities = age::IdentityFile::from_buffer(BufReader::new(reader))?.into_identities();
-            break Ok(password_decryptor.decrypt(identities.iter().map(|i| match i {
-                age::IdentityFileEntry::Native(i) => i as &dyn age::Identity,
-            }))?)
-        },
-        "ssh" => { // ssh key (with or without passphrase)
-            let identity = match ssh::Identity::from_buffer(BufReader::new(File::open(identity_file)?), Some(identity_file.to_str().unwrap().to_owned()))? {
-                ssh::Identity::Encrypted(k) => loop {
-                    let pass = rpassword::prompt_password("Enter passphrase: ")?;
-                    match k.decrypt(Secret::new(pass)) {
-                        Ok(k) => break k,
-                        Err(age::DecryptError::KeyDecryptionFailed) => { eprintln!("Decryption failed. Wrong passphrase? Please try again."); continue; },
-                        Err(e) => return Err(Box::new(e)),
-                    }
-                },
-                ssh::Identity::Unencrypted(k) => k,
-                ssh::Identity::Unsupported(k) => return Err(format!("The ssh identity key type of {} is not supported by age: {:?}", identity_file.display(), k).into()),
-            };
-            Ok(password_decryptor.decrypt(iter::once(&ssh::Identity::from(identity) as &dyn age::Identity))?)
-        }
-        _ => panic!("Identity file with name {} not supported!", identity_file.file_name().unwrap().to_str().unwrap()),
+    if identities.is_empty() {
+        let mut try_counter = 0;
+        match identity_file.extension().unwrap().to_str().unwrap() {
+            "txt" => { // clear text identity
+                let identities_native = age::IdentityFile::from_file(identity_file.to_str().unwrap().to_owned())?.into_identities();
+                for identity in identities_native {
+                    let identity = match identity { age::IdentityFileEntry::Native(i) => i, };
+                    identities.push(Box::new(identity) as Box<dyn age::Identity>);
+                    println!("collecting");
+                }
+            },
+            "age" => loop { // passphrase age encrypted identity
+                let identity_decryptor = match age::Decryptor::new(File::open(&identity_file)?)? {
+                    age::Decryptor::Passphrase(d) => d,
+                    _ => return Err(format!("The identity file {} should be encrypted with a passphrase, not with recipients/identities!", identity_file.display()).into()),
+                };
+
+                let (pass, pass_from_agent) = get_or_ask_passphrase(identity_file.to_str().unwrap(), &mut try_counter)?;
+                let reader = match identity_decryptor.decrypt(&Secret::new(pass.clone()), Some(18)) {
+                    Ok(r) => r,
+                    Err(age::DecryptError::DecryptionFailed) => { eprintln!("Decryption failed! Wrong passphrase? Please try again."); continue; }
+                    Err(e) => return Err(Box::new(e)),
+                };
+                if !pass_from_agent { agent_set_passphrase(identity_file.to_str().unwrap(), &pass)?; }
+                let identities_native = age::IdentityFile::from_buffer(BufReader::new(reader))?.into_identities();
+                for identity in identities_native {
+                    let identity = match identity { age::IdentityFileEntry::Native(i) => i, };
+                    identities.push(Box::new(identity) as Box<dyn age::Identity>);
+                }
+                break
+            },
+            "ssh" => { // ssh key (with or without passphrase)
+                let identity = match ssh::Identity::from_buffer(BufReader::new(File::open(identity_file)?), Some(identity_file.to_str().unwrap().to_owned()))? {
+                    ssh::Identity::Encrypted(k) => loop {
+                        let (pass, pass_from_agent) = get_or_ask_passphrase(identity_file.to_str().unwrap(), &mut try_counter)?;
+                        match k.decrypt(Secret::new(pass.clone())) {
+                            Ok(k) => { if !pass_from_agent { agent_set_passphrase(identity_file.to_str().unwrap(), &pass)?; } break k; },
+                            Err(age::DecryptError::KeyDecryptionFailed) => { eprintln!("Decryption failed. Wrong passphrase? Please try again."); continue; },
+                            Err(e) => return Err(Box::new(e)),
+                        }
+                    },
+                    ssh::Identity::Unencrypted(k) => k,
+                    ssh::Identity::Unsupported(k) => return Err(format!("The ssh identity key type of {} is not supported by age: {:?}", identity_file.display(), k).into()),
+                };
+                identities.push(Box::new(ssh::Identity::from(identity)) as Box<dyn age::Identity>);
+            },
+            _ => panic!("Identity file with name {} not supported!", identity_file.file_name().unwrap().to_str().unwrap()),
+        };
     }
+
+    Ok(password_decryptor.decrypt(identities.iter().map(|i| i.as_ref()))?)
 }
 
 fn get_editor() -> Option<OsString> {
@@ -356,7 +433,7 @@ fn edit(identity_file: PathBuf, store_dir: PathBuf, name: String) -> Result<(), 
     let old_content = match agefile.is_file() {
         false => vec![],
         true => {
-            let mut reader = decrypt_password(&identity_file, &agefile)?;
+            let mut reader = decrypt_password(&identity_file, &agefile, &mut vec![])?;
             let mut old_content = vec![];
             reader.read_to_end(&mut old_content)?;
             File::create(&tmpfile_txt)?.write_all(&old_content)?;
@@ -469,7 +546,7 @@ fn show(identity_file: PathBuf, store_dir: PathBuf, clip: bool, key: Option<Stri
         return Ok(());
     }
 
-    let mut reader = decrypt_password(&identity_file, &agefile)?;
+    let mut reader = decrypt_password(&identity_file, &agefile, &mut vec![])?;
     let mut output = String::new();
     reader.read_to_string(&mut output)?;
     let mut _otp = String::new();
@@ -568,20 +645,20 @@ fn remove(identity_file: PathBuf, store_dir: PathBuf, recursive: bool, name: Str
 
 // returns whether git is used
 fn reencrypt(identity_file: &Path) -> Result<bool, Box<dyn Error>> {
-    fn reencrypt_recursive(identity_file: &Path, recipients_dir: &Path, cur_dir: &Path, collect: &mut Vec<PathBuf>) -> Result<(), Box<dyn Error>>{
+    fn reencrypt_recursive(identity_file: &Path, recipients_dir: &Path, identities: &mut Vec::<Box<dyn age::Identity>>, cur_dir: &Path, collect: &mut Vec<PathBuf>) -> Result<(), Box<dyn Error>>{
         for entry in cur_dir.read_dir()?.filter(|entry| !entry.as_ref().unwrap().file_name().to_str().unwrap().starts_with('.')) {
             let entry = entry?;
             let filetype = entry.file_type().unwrap();
             let entry_path = entry.path();
             if filetype.is_dir() {
-                reencrypt_recursive(identity_file, recipients_dir, &entry_path, collect)?;
+                reencrypt_recursive(identity_file, recipients_dir, identities, &entry_path, collect)?;
                 continue;
             } else if !filetype.is_file() || entry_path.extension() != Some(OsStr::new("age")) {
                 continue;
             }
 
             let mut content = vec![];
-            decrypt_password(identity_file, &entry_path)?.read_to_end(&mut content)?;
+            decrypt_password(identity_file, &entry_path, identities)?.read_to_end(&mut content)?;
             encrypt_password(recipients_dir, &content[..], &entry_path)?;
             collect.push(entry_path);
         }
@@ -589,7 +666,8 @@ fn reencrypt(identity_file: &Path) -> Result<bool, Box<dyn Error>> {
     }
 
     let mut collect = vec![];
-    reencrypt_recursive(identity_file, &identity_file.parent().unwrap().join(".recipients"), &identity_file.parent().unwrap(), &mut collect)?;
+    let mut identities = vec![];
+    reencrypt_recursive(identity_file, &identity_file.parent().unwrap().join(".recipients"), &mut identities, &identity_file.parent().unwrap(), &mut collect)?;
 
     // git add
     if check_for_git(&identity_file.parent().unwrap())? {
@@ -610,7 +688,7 @@ fn add_recipient(identity_file: PathBuf, public_key: String, alias: String) -> R
                 continue;
             }
             if line.contains(&public_key) {
-                return Err(format!("Recipient {} already in {}:{}", &public_key, recipient.unwrap().path().display(), i + 1).into());
+                return Err(format!("Recipient already in {}:{}", recipient.unwrap().path().display(), i + 1).into());
             }
         }
     }

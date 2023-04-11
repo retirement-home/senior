@@ -15,6 +15,7 @@ rpassword = "7.2.0"
 interprocess = "1.2.1"
 chrono = "0.4.24"
 age = { version = "0.9.1", features = ["ssh"] }
+sysinfo = "0.28.4"
 
 [build-dependencies]
 clap_complete = "4.1.4"

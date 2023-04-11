@@ -31,5 +31,6 @@ fn main() -> Result<(), Error> {
     ).expect("Failed to generate Zsh completion");
 
     println!("cargo:warning=Zsh file is generated: {:?}", zsh_path);
+    println!("cargo:warning=Bash file is generated: {:?}", bash_path);
     Ok(())
 }
