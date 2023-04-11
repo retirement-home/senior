@@ -13,7 +13,7 @@ howto:
 	$(info run `sudo make install` or `sudo make uninstall`)
 
 target/release/senior target/release/senior-agent:
-	cargo build +nightly --bins --locked --release --target-dir target
+	RUSTUP_TOOLCHAIN=nightly cargo build --bins --locked --release --target-dir target
 
 install: target/release/senior target/release/senior-agent
 	mkdir -p $(shell dirname $(BINARY))
