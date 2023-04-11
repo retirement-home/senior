@@ -5,7 +5,7 @@ pub mod cli;
 use std::{env, str::FromStr};
 use std::path::{Path, PathBuf};
 use std::fs::{self, File};
-use std::process::{Command, Stdio};
+use std::process::{Command, Stdio, ChildStdout};
 use std::ffi::{OsString, OsStr};
 use std::io::{self, Write, Read, BufReader, BufRead};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,6 +22,7 @@ use thotp;
 use base32;
 use interprocess::local_socket::{LocalSocketStream, NameTypeSupport};
 use sysinfo::{System, SystemExt};
+use atty::Stream;
 
 use cli::{Cli, CliCommand};
 
@@ -77,15 +78,58 @@ fn agent_set_passphrase(key: &str, passphrase: &str) -> Result<(), Box<dyn Error
     Ok(())
 }
 
+// use pinentry if there is no tty
+fn prompt_password(prompt: &str) -> Result<String, Box<dyn Error>> {
+    fn read_ok(stdout_reader: &mut BufReader<ChildStdout>, pinentry_program: &str) -> Result<(), Box<dyn Error>> {
+        let mut buffer = String::new();
+        stdout_reader.read_line(&mut buffer)?;
+        if buffer.starts_with("OK") {
+            Ok(())
+        } else {
+            buffer.pop();
+            Err(format!("{}: {}", pinentry_program, &buffer).into())
+        }
+    }
+
+    if atty::is(Stream::Stdout) {
+        Ok(rpassword::prompt_password(format!("{}: ", prompt))?)
+    } else {
+        // People are used to pass and gnupg; Get their preferred pinentry program from their
+        // gpg-agent.conf
+        let gnupg_dir = PathBuf::from(env::var_os("GNUPGHOME").unwrap_or(env::var_os("HOME").ok_or("Cannot get home directory")?));
+        let gpgagent_file = gnupg_dir.join("gpg-agent.conf");
+        let pinentry_program = if gpgagent_file.canonicalize()?.is_file() {
+            let gpgagent_conf = BufReader::new(File::open(gpgagent_file)?);
+            gpgagent_conf.lines().filter(|l| l.as_ref().expect("Cannot read gpg-agent.conf").starts_with("pinentry-program")).next().map_or("pinentry".to_owned(), |l| l.expect("Cannot read line")["pinentry-program ".len()..].to_owned())
+        } else { "pinentry".to_owned() };
+        let child = Command::new(&pinentry_program).stdout(Stdio::piped()).stdin(Stdio::piped()).spawn()?;
+        let mut stdout_reader = BufReader::new(child.stdout.unwrap());
+        let mut stdin_writer = child.stdin.unwrap();
+        read_ok(&mut stdout_reader, &pinentry_program)?;
+        stdin_writer.write_all(format!("SETPROMPT {}\n", prompt).as_bytes())?;
+        read_ok(&mut stdout_reader, &pinentry_program)?;
+        stdin_writer.write_all(format!("GETPIN {}\n", prompt).as_bytes())?;
+        let mut pass = String::new();
+        stdout_reader.read_line(&mut pass)?;
+        pass.pop();
+        pass.drain(0..2);
+        read_ok(&mut stdout_reader, &pinentry_program)?;
+        stdin_writer.write_all(b"BYE\n")?;
+        read_ok(&mut stdout_reader, &pinentry_program)?;
+        Ok(pass)
+    }
+}
+
 // return value: second value in tuple is whether the agent was used
 fn get_or_ask_passphrase(key: &str, try_counter: &mut u32) -> Result<(String, bool), Box<dyn Error>> {
+    let prompt = format!("Enter passphrase to unlock {}", key);
     *try_counter += 1;
     Ok(match try_counter {
         1 => match agent_get_passphrase(key)? {
-                None => (rpassword::prompt_password("Enter passphrase: ")?, false),
+                None => (prompt_password(&prompt)?, false),
                 Some(p) => (p, true),
             },
-        _ => (rpassword::prompt_password("Enter passphrase: ")?, false),
+        _ => (prompt_password(&prompt)?, false),
     })
 }
 
