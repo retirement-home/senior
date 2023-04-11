@@ -8,7 +8,7 @@ url='https://gitlab.com/retirement-home/senior'
 license=('AGPL3')
 depends=(wl-clipboard tree)
 optdepends=(git)
-makedepends=(cargo git)
+makedepends=(cargo-nightly git)
 source=("git+${url}.git")
 md5sums=('SKIP')
 
@@ -19,7 +19,7 @@ pkgver() {
 
 build() {
 	cd "$pkgname"
-	cargo +nightly build --bins --locked --release --target-dir target
+	cargo build --bins --locked --release --target-dir target
 }
 
 package() {
