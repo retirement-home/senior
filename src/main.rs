@@ -313,7 +313,6 @@ fn decrypt_password(identity_file: &Path, agefile: &Path, identities: &mut Vec<B
                 for identity in identities_native {
                     let identity = match identity { age::IdentityFileEntry::Native(i) => i, };
                     identities.push(Box::new(identity) as Box<dyn age::Identity>);
-                    println!("collecting");
                 }
             },
             "age" => loop { // passphrase age encrypted identity
