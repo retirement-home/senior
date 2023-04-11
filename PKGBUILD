@@ -19,7 +19,7 @@ pkgver() {
 
 build() {
 	cd "$pkgname"
-	cargo build --bins --locked --release --target-dir target
+	cargo +nightly build --bins --locked --release --target-dir target
 }
 
 package() {
