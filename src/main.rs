@@ -124,12 +124,13 @@ fn prompt_password(prompt: &str) -> Result<String, Box<dyn Error>> {
 fn get_or_ask_passphrase(key: &str, try_counter: &mut u32) -> Result<(String, bool), Box<dyn Error>> {
     let prompt = format!("Enter passphrase to unlock {}", key);
     *try_counter += 1;
-    Ok(match try_counter {
-        1 => match agent_get_passphrase(key)? {
-                None => (prompt_password(&prompt)?, false),
-                Some(p) => (p, true),
-            },
-        _ => (prompt_password(&prompt)?, false),
+    Ok(if *try_counter == 1 {
+        match agent_get_passphrase(key)? {
+            None => (prompt_password(&prompt)?, false),
+            Some(p) => (p, true),
+        }
+    } else {
+        (prompt_password(&prompt)?, false)
     })
 }
 
@@ -137,9 +138,10 @@ fn ask_passphrase_twice() -> std::io::Result<String> {
     loop {
         let pass1 = rpassword::prompt_password("Enter a passphrase: ")?;
         let pass2 = rpassword::prompt_password("Confirm passphrase: ")?;
-        match pass1 == pass2 {
-            false => eprintln!("Passphrases did not match!"),
-            true => break Ok(pass1),
+        if pass1 == pass2 {
+            break Ok(pass1);
+        } else {
+            eprintln!("Passphrases did not match!");
         }
     }
 }
@@ -150,10 +152,7 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
         None => {
             let passphrase = ask_passphrase_twice()?;
             let use_passphrase = passphrase != "";
-            let identity_file = store_dir.join(match use_passphrase {
-                true => ".identity.age",
-                false => ".identity.txt",
-            });
+            let identity_file = store_dir.join(if use_passphrase { ".identity.age" } else { ".identity.txt" });
             let key = age::x25519::Identity::generate();
             let pubkey = key.to_public().to_string();
             fs::create_dir_all(store_dir)?;
@@ -177,13 +176,10 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
                 Ok(identity_file) => { // unencrypted age identity file
                     match identity_file.into_identities().first().ok_or("No identities in file.")? {
                         age::IdentityFileEntry::Native(i) => {
-                            println!("Supplied age identity is unencrypted. It is recommended to encrypt it with a passphrase.");
+                            println!("The supplied age identity is unencrypted. It is recommended to encrypt it with a passphrase.");
                             let passphrase = ask_passphrase_twice()?;
                             let use_passphrase = passphrase != "";
-                            let identity_file = store_dir.join(match use_passphrase {
-                                true => ".identity.age",
-                                false => ".identity.txt",
-                            });
+                            let identity_file = store_dir.join(if use_passphrase { ".identity.age" } else { ".identity.txt" });
                             fs::create_dir_all(store_dir)?;
                             if use_passphrase {
                                 let mut keyfile_handle = File::open(&keyfile)?;
@@ -211,15 +207,14 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
                             ssh::Identity::Encrypted(_) => loop {
                                 let passphrase = rpassword::prompt_password("Unlock the supplied ssh key: ")?;
                                 let mut keygen_command = Command::new("ssh-keygen").args(["-y", "-P", &passphrase, "-f", &keyfile]).output()?;
-                                match keygen_command.status.success() {
-                                    false => eprintln!("Could not produce public key. Is the passphrase correct? Please try again."),
-                                    true => {
-                                        // remove newline
-                                        keygen_command.stdout.pop();
-                                        fs::create_dir_all(store_dir)?;
-                                        fs::copy(&keyfile, store_dir.join(".identity.pass.ssh"))?;
-                                        break Ok(String::from_utf8(keygen_command.stdout)?);
-                                    },
+                                if keygen_command.status.success() {
+                                    // remove newline
+                                    keygen_command.stdout.pop();
+                                    fs::create_dir_all(store_dir)?;
+                                    fs::copy(&keyfile, store_dir.join(".identity.pass.ssh"))?;
+                                    break Ok(String::from_utf8(keygen_command.stdout)?);
+                                } else {
+                                    eprintln!("Could not produce public key! Is the passphrase correct? Please try again.");
                                 }
                             },
                             ssh::Identity::Unencrypted(_) => {
@@ -230,15 +225,10 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
                                 println!("Supplied ssh key is unencrypted. It is recommended to encrypt it with a passphrase.");
                                 let passphrase = ask_passphrase_twice()?;
                                 let use_passphrase = passphrase != "";
-                                let identity_file = store_dir.join(match use_passphrase {
-                                    false => ".identity.ssh",
-                                    true => ".identity.pass.ssh",
-                                });
+                                let identity_file = store_dir.join(if use_passphrase { ".identity.pass.ssh" } else { ".identity.ssh" });
                                 fs::create_dir_all(store_dir)?;
                                 fs::copy(&keyfile, &identity_file)?;
-                                if use_passphrase {
-                                    Command::new("ssh-keygen").args(["-p", "-f"]).arg(&identity_file).args(["-N", &passphrase]).status()?.exit_ok()?;
-                                }
+                                if use_passphrase { Command::new("ssh-keygen").args(["-p", "-f"]).arg(&identity_file).args(["-N", &passphrase]).status()?.exit_ok()?; }
                                 Ok(String::from_utf8(gen_pubkey.stdout)?)
                             },
                             ssh::Identity::Unsupported(k) => return Err(format!("Supplied ssh identity key type is not supported by age: {:?}", k).into()),
@@ -251,7 +241,7 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
                             let pass = rpassword::prompt_password("Unlock the supplied identity file: ")?;
                             let reader = match decryptor.decrypt(&Secret::new(pass.clone()), Some(32)) {
                                 Ok(r) => r,
-                                Err(age::DecryptError::DecryptionFailed) => { eprintln!("Decryption failed. Wrong passphrase? Please try again."); continue; }
+                                Err(age::DecryptError::DecryptionFailed) => { eprintln!("Decryption failed! Wrong passphrase? Please try again."); continue; }
                                 Err(e) => return Err(Box::new(e)),
                             };
                             let pubkey = match age::IdentityFile::from_buffer(BufReader::new(reader))?.into_identities().first().ok_or("No identities in file.")? {
@@ -270,10 +260,7 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
 
 fn init_helper(store_dir: &Path, identity: Option<String>, recipient_alias: Option<String>) -> Result<(), Box<dyn Error>> {
     // set up default values
-    let recipient_alias = match recipient_alias {
-        Some(a) => a,
-        None => env::var_os("USER").ok_or("Could not get the username. Please manually supply a recipient-alias.")?.into_string().unwrap(),
-    };
+    let recipient_alias = recipient_alias.unwrap_or_else(|| env::var_os("USER").expect("Could not get the username. Please manually supply a recipient-alias.").into_string().unwrap());
 
     let pubkey = setup_identity(store_dir, identity)?;
 
@@ -296,7 +283,7 @@ fn init(store_dir: PathBuf, identity: Option<String>, recipient_alias: Option<St
         Err(e) => { // cleanup
             if store_dir.is_dir() {
                 if let Err(e) = fs::remove_dir_all(&store_dir) {
-                    eprintln!("Error cleaning up {}: {}", store_dir.display(), e);
+                    eprintln!("Error cleaning up {}! {}", store_dir.display(), e);
                 }
             }
             Err(e)
@@ -322,7 +309,7 @@ fn git_clone(store_dir: PathBuf, identity: Option<String>, address: String) -> R
         Err(e) => { // cleanup
             if store_dir.is_dir() {
                 if let Err(e) = fs::remove_dir_all(&store_dir) {
-                    eprintln!("Error cleaning up {}: {}", store_dir.display(), e);
+                    eprintln!("Error cleaning up {}! {}", store_dir.display(), e);
                 }
             }
             Err(e)
@@ -333,13 +320,12 @@ fn git_clone(store_dir: PathBuf, identity: Option<String>, address: String) -> R
 
 // resolve symlinks even if the end of the path does not exist
 fn canonicalise(path: &Path) -> std::io::Result<PathBuf> {
-    match path.exists() {
-        true => path.canonicalize(),
-        false => {
-            let filename = path.file_name().unwrap();
-            let parent = canonicalise(path.parent().unwrap())?;
-            Ok(parent.join(filename))
-        },
+    if path.exists() {
+        path.canonicalize()
+    } else {
+        let filename = path.file_name().unwrap();
+        let parent = canonicalise(path.parent().unwrap())?;
+        Ok(parent.join(filename))
     }
 }
 
@@ -389,7 +375,7 @@ fn decrypt_password(identity_file: &Path, agefile: &Path, identities: &mut Vec<B
                         let (pass, pass_is_from_agent) = get_or_ask_passphrase(identity_file.to_str().unwrap(), &mut try_counter)?;
                         match k.decrypt(Secret::new(pass.clone())) {
                             Ok(k) => { if !pass_is_from_agent { agent_set_passphrase(identity_file.to_str().unwrap(), &pass)?; } break k; },
-                            Err(age::DecryptError::KeyDecryptionFailed) => { eprintln!("Decryption failed. Wrong passphrase? Please try again."); continue; },
+                            Err(age::DecryptError::KeyDecryptionFailed) => { eprintln!("Decryption failed! Wrong passphrase? Please try again."); continue; },
                             Err(e) => return Err(Box::new(e)),
                         }
                     },
@@ -405,19 +391,15 @@ fn decrypt_password(identity_file: &Path, agefile: &Path, identities: &mut Vec<B
     Ok(password_decryptor.decrypt(identities.iter().map(|i| i.as_ref()))?)
 }
 
-fn get_editor() -> Option<OsString> {
-    match env::var_os("EDITOR") {
-        Some(editor) => Some(editor),
-        None => {
-            let editors = ["nvim", "vim", "emacs", "nano", "vi"];
-            for editor in editors {
-                if let Ok(_) = which(editor) {
-                    return Some(OsString::from(editor));
-                }
-            }
-            None
-        },
-    }
+fn get_editor() -> String {
+    let mut editors = ["nvim", "vim", "emacs", "nano", "vi"].into_iter();
+    env::var_os("EDITOR").map_or_else(|| loop {
+        let candidate = editors.next().expect("Cannot find editor! Please set the EDITOR environment variable.");
+        if let Ok(_) = which(candidate) {
+            break candidate.to_owned();
+        }
+    },
+    |v| v.to_str().unwrap().to_owned())
 }
 
 fn get_recipients_recursive(dir: &Path, recipients: &mut Vec<Box<dyn age::Recipient + Send>>) -> Result<(), Box<dyn Error>> {
@@ -477,19 +459,18 @@ fn edit(identity_file: PathBuf, store_dir: PathBuf, name: String) -> Result<(), 
     let canon_store_dir = identity_file.parent().unwrap();
 
     // decrypt if it exists
-    let old_content = match agefile.is_file() {
-        false => vec![],
-        true => {
-            let mut reader = decrypt_password(&identity_file, &agefile, &mut vec![])?;
-            let mut old_content = vec![];
-            reader.read_to_end(&mut old_content)?;
-            File::create(&tmpfile_txt)?.write_all(&old_content)?;
-            old_content
-        },
+    let old_content = if agefile.is_file() {
+        let mut reader = decrypt_password(&identity_file, &agefile, &mut vec![])?;
+        let mut old_content = vec![];
+        reader.read_to_end(&mut old_content)?;
+        File::create(&tmpfile_txt)?.write_all(&old_content)?;
+        old_content
+    } else {
+        vec![]
     };
 
     // edit
-    let editor = get_editor().ok_or("Cannot find editor! Please set the EDITOR environment variable.")?;
+    let editor = get_editor();
     Command::new(&editor).arg(&tmpfile_txt).status()?.exit_ok()?;
 
     // compare
@@ -514,7 +495,7 @@ fn edit(identity_file: PathBuf, store_dir: PathBuf, name: String) -> Result<(), 
     // git add/commit
     if check_for_git(&canon_store_dir)? {
         Command::new("git").arg("-C").arg(canon_store_dir).arg("add").arg(&agefile).status()?.exit_ok()?;
-        let message = format!("{} password for {} using {}", if old_content.is_empty() { "Add" } else { "Edit" }, agefile.with_extension("").strip_prefix(&canon_store_dir)?.display(), editor.to_str().unwrap());
+        let message = format!("{} password for {} using {}", if old_content.is_empty() { "Add" } else { "Edit" }, agefile.with_extension("").strip_prefix(&canon_store_dir)?.display(), &editor);
         Command::new("git").arg("-C").arg(canon_store_dir).args(["commit", "-m", &message]).status()?.exit_ok()?;
     }
     Ok(())
@@ -559,9 +540,10 @@ fn show(identity_file: PathBuf, store_dir: PathBuf, clip: bool, key: Option<Stri
         }
 
         // print the directory tree
-        match &name[..] {
-           "" => println!("{}", store_dir.display()),
-           name => println!("{}", name),
+        if name.is_empty() {
+            println!("{}", store_dir.display());
+        } else {
+            println!("{}", name);
         }
 
         let mut tree = Command::new("tree").args(["-N", "-C", "-l", "--noreport"]).arg(name_dir).output()?;
@@ -805,10 +787,7 @@ fn transition_compat(canonicalised_identity_file: &Path, store_dir: &Path) -> Op
 fn main() -> Result<(), Box<dyn Error>> {
     let mut cli = Cli::parse();
 
-    let senior_dir = match env::var_os("XDG_DATA_HOME") {
-        Some(val) => PathBuf::from(val),
-        None => PathBuf::from(env::var_os("HOME").unwrap()).join(".local/share/"),
-    }.join("senior/");
+    let senior_dir = env::var_os("XDG_DATA_HOME").map_or_else(|| PathBuf::from(env::var_os("HOME").unwrap()).join(".local/share/"), |v| PathBuf::from(v)).join("senior/");
 
     // default store for `senior clone`
     if cli.store == None {
