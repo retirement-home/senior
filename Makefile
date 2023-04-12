@@ -23,7 +23,7 @@ install: target/release/senior target/release/senior-agent
 	cp target/release/senior-agent $(BINARYMENU)
 	cp src/seniormenu $(BINARYMENU)
 	cp completions/senior.zsh $(ZSHCOMPLETION)
-	cp completions/senior.bash-completion $(BASHCOMPLETION)
+	cp completions/senior.bash $(BASHCOMPLETION)
 
 uninstall:
 	rm -f $(BINARY)

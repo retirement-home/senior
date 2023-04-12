@@ -30,5 +30,5 @@ package() {
 	install -Dm755 target/release/senior-agent -t "$pkgdir"/usr/bin/
 	install -Dm755 src/seniormenu -t "$pkgdir"/usr/bin/
 	install -Dm644 completions/senior.zsh "$pkgdir"/usr/share/zsh/site-functions/_senior
-	install -Dm644 completions/senior.bash-completion "$pkgdir"/usr/share/bash-completion/completions/senior
+	install -Dm644 completions/senior.bash "$pkgdir"/usr/share/bash-completion/completions/senior
 }
