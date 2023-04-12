@@ -1,62 +1,61 @@
 _senior_complete_entries () {
-	declare storearg=()
-	for i in "${!COMP_WORDS[@]}"; do
-		if [[ ${COMP_WORDS[$i]} = "-s" || ${COMP_WORDS[$i]} = "--store" ]]; then
-			storearg=("--store" ${COMP_WORDS[(($i + 1))]})
-		fi
-	done
-	local prefix="$(senior ${storearg[@]} print-dir)"
-	prefix="${prefix%/}/"
-	echo "$prefix" > prefix.txt
-	local suffix=".age"
-	local autoexpand=${1:-0}
+    declare storearg=()
+    for i in "${!COMP_WORDS[@]}"; do
+        if [[ ${COMP_WORDS[$i]} = "-s" || ${COMP_WORDS[$i]} = "--store" ]]; then
+            storearg=("--store" ${COMP_WORDS[(($i + 1))]})
+        fi
+    done
+    local prefix="$(senior ${storearg[@]} print-dir)"
+    prefix="${prefix%/}/"
+    local suffix=".age"
+    local autoexpand=${1:-0}
 
-	local IFS=$'\n'
-	local items=($(compgen -f $prefix$cur))
+    local IFS=$'\n'
+    local items=($(compgen -f $prefix$cur))
 
-	# Remember the value of the first item, to see if it is a directory. If
-	# it is a directory, then don't add a space to the completion
-	local firstitem=""
-	# Use counter, can't use ${#items[@]} as we skip hidden directories
-	local i=0 item
+    # Remember the value of the first item, to see if it is a directory. If
+    # it is a directory, then don't add a space to the completion
+    local firstitem=""
+    # Use counter, can't use ${#items[@]} as we skip hidden directories
+    local i=0 item
 
-	for item in ${items[@]}; do
-		[[ $item =~ /\.[^/]*$ ]] && continue
+    for item in ${items[@]}; do
+        [[ $item =~ /\.[^/]*$ ]] && continue
 
-		# if there is a unique match, and it is a directory with one entry
-		# autocomplete the subentry as well (recursively)
-		if [[ ${#items[@]} -eq 1 && $autoexpand -eq 1 ]]; then
-			while [[ -d $item ]]; do
-				local subitems=($(compgen -f "$item/"))
-				local filtereditems=( ) item2
-				for item2 in "${subitems[@]}"; do
-					[[ $item2 =~ /\.[^/]*$ ]] && continue
-					filtereditems+=( "$item2" )
-				done
-				if [[ ${#filtereditems[@]} -eq 1 ]]; then
-					item="${filtereditems[0]}"
-				else
-					break
-				fi
-			done
-		fi
+        # if there is a unique match, and it is a directory with one entry
+        # autocomplete the subentry as well (recursively)
+        if [[ ${#items[@]} -eq 1 && $autoexpand -eq 1 ]]; then
+            while [[ -d $item ]]; do
+                local subitems=($(compgen -f "$item/"))
+                local filtereditems=( ) item2
+                for item2 in "${subitems[@]}"; do
+                    [[ $item2 =~ /\.[^/]*$ ]] && continue
+                    filtereditems+=( "$item2" )
+                done
+                if [[ ${#filtereditems[@]} -eq 1 ]]; then
+                    item="${filtereditems[0]}"
+                else
+                    break
+                fi
+            done
+        fi
 
-		# append / to directories
-		[[ -d $item ]] && item="$item/"
+        # append / to directories
+        [[ -d $item ]] && item="$item/"
 
-		item="${item%$suffix}"
-		COMPREPLY+=("${item#$prefix}")
-		if [[ $i -eq 0 ]]; then
-			firstitem=$item
-		fi
-		let i+=1
-	done
+        item="${item%$suffix}"
+        COMPREPLY+=("${item#$prefix}")
+        if [[ $i -eq 0 ]]; then
+            firstitem=$item
+        fi
+        let i+=1
+    done
 
-	# The only time we want to add a space to the end is if there is only
-	# one match, and it is not a directory
-	if [[ $i -gt 1 || ( $i -eq 1 && -d $firstitem ) ]]; then
-		compopt -o nospace
-	fi
+    # The only time we want to add a space to the end is if there is only
+    # one match, and it is not a directory
+    if [[ $i -gt 1 || ( $i -eq 1 && -d $firstitem ) ]]; then
+        compopt -o nospace
+    fi
 }
 
 _senior() {
@@ -151,16 +150,16 @@ _senior() {
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
-			local prefix=$(senior print-dir)/..
-			local stores=( ${prefix}/* )
-			stores=( ${stores[@]#"$prefix"/} )
+            local prefix=$(senior print-dir)/..
+            local stores=( ${prefix}/* )
+            stores=( ${stores[@]#"$prefix"/} )
             case "${prev}" in
                 --store)
-					COMPREPLY=( $(compgen -W "$(echo ${stores[@]})" -- "${cur}") )
+                    COMPREPLY=( $(compgen -W "$(echo ${stores[@]})" -- "${cur}") )
                     return 0
                     ;;
                 -s)
-					COMPREPLY=( $(compgen -W "$(echo ${stores[@]})" -- "${cur}") )
+                    COMPREPLY=( $(compgen -W "$(echo ${stores[@]})" -- "${cur}") )
                     return 0
                     ;;
                 *)
@@ -207,11 +206,11 @@ _senior() {
             return 0
             ;;
         senior__edit)
-			_senior_complete_entries
-			return 0
+            _senior_complete_entries
+            return 0
             ;;
         senior__git)
-			COMPREPLY+=($(compgen -W "init push pull config log reflog rebase" -- ${cur}))
+            COMPREPLY+=($(compgen -W "init push pull config log reflog rebase" -- ${cur}))
             ;;
         senior__help)
             opts="init clone edit show mv rm print-dir git add-recipient reencrypt help"
@@ -322,7 +321,7 @@ _senior() {
                     COMPREPLY=()
                     ;;
             esac
-			_senior_complete_entries
+            _senior_complete_entries
             return 0
             ;;
         senior__help__print__dir)
@@ -412,7 +411,7 @@ _senior() {
             return 0
             ;;
         senior__mv)
-			_senior_complete_entries
+            _senior_complete_entries
             ;;
         senior__print__dir)
             opts="-h --help"
@@ -443,30 +442,29 @@ _senior() {
             return 0
             ;;
         senior__rm)
-			COMPREPLY+=($(compgen -W "-r --recursive" -- ${cur}))
-			_senior_complete_entries
-			return 0
+            COMPREPLY+=($(compgen -W "-r --recursive" -- ${cur}))
+            _senior_complete_entries
+            return 0
             ;;
         senior__show)
-            opts="-k -c -h --key --clip --help [NAME]"
+            opts="-k -c -h --key --clip --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                _senior_complete_entries 1
                 return 0
             fi
             case "${prev}" in
                 --key)
                     COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
                     ;;
                 -k)
                     COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
                     ;;
                 *)
                     COMPREPLY=()
                     ;;
             esac
-			_senior_complete_entries
+            _senior_complete_entries 1
             return 0
             ;;
     esac
