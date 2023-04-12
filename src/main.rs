@@ -249,7 +249,7 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
                                 _ => return Err("The supplied identity file should be encrypted with a passphrase, not with recipients/identities!".into()),
                             };
                             let pass = rpassword::prompt_password("Unlock the supplied identity file: ")?;
-                            let reader = match decryptor.decrypt(&Secret::new(pass.clone()), Some(18)) {
+                            let reader = match decryptor.decrypt(&Secret::new(pass.clone()), Some(32)) {
                                 Ok(r) => r,
                                 Err(age::DecryptError::DecryptionFailed) => { eprintln!("Decryption failed. Wrong passphrase? Please try again."); continue; }
                                 Err(e) => return Err(Box::new(e)),
@@ -369,7 +369,7 @@ fn decrypt_password(identity_file: &Path, agefile: &Path, identities: &mut Vec<B
                 // identity, instead of the passphrase; this is done for faster decryption
                 let (pass, pass_is_from_agent) = get_or_ask_passphrase(identity_file.to_str().unwrap(), &mut try_counter)?;
                 if pass_is_from_agent { identities.push(Box::new(age::x25519::Identity::from_str(&pass)?) as Box<dyn age::Identity>); break; }
-                let reader = match identity_decryptor.decrypt(&Secret::new(pass.clone()), Some(18)) {
+                let reader = match identity_decryptor.decrypt(&Secret::new(pass.clone()), Some(32)) {
                     Ok(r) => r,
                     Err(age::DecryptError::DecryptionFailed) => { eprintln!("Decryption failed! Wrong passphrase? Please try again."); continue; }
                     Err(e) => return Err(Box::new(e)),
