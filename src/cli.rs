@@ -22,7 +22,7 @@ pub enum CliCommand {
         #[arg(short, long, value_name = "FILE", value_hint = ValueHint::AnyPath)]
         identity: Option<String>,
 
-        /// Alias for recipient; default: your username
+        /// Alias for the recipient; default: your username
         #[arg(short = 'a', long = "recipient-alias", value_name = "USERNAME")]
         recipient_alias: Option<String>,
     },
@@ -41,7 +41,7 @@ pub enum CliCommand {
 
     /// Edit/create a password
     Edit {
-        /// Name of the password file
+        /// Name of the password
         #[arg(index = 1, value_hint = ValueHint::AnyPath)]
         name: String,
     },
@@ -58,18 +58,18 @@ pub enum CliCommand {
         #[arg(short, long)]
         clip: bool,
 
-        /// Name of the password file
+        /// Name of the password or directory
         #[arg(index = 1, default_value_t = String::from(""), value_hint = ValueHint::FilePath)]
         name: String,
     },
 
     /// Move a password
     Mv {
-        /// Old name of the password file or directory
+        /// Old name of the password or directory
         #[arg(index = 1, value_hint = ValueHint::AnyPath)]
         old_name: String,
 
-        /// New name of the password file or directory
+        /// New name of the password or directory
         #[arg(index = 2, value_hint = ValueHint::AnyPath)]
         new_name: String,
     },
@@ -80,15 +80,15 @@ pub enum CliCommand {
         #[arg(short, long)]
         recursive: bool,
 
-        /// Name of the password file or directory
+        /// Name of the password or directory
         #[arg(index = 1, value_hint = ValueHint::AnyPath)]
         name: String,
     },
 
-    /// Show the directory of the store
+    /// Print the directory of the store
     PrintDir,
 
-    /// Run git commands in the specified store
+    /// Run git commands in the store
     Git {
         #[arg(allow_hyphen_values = true, trailing_var_arg = true, value_hint = ValueHint::CommandWithArguments)]
         args: Vec<String>,
