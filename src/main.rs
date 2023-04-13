@@ -10,6 +10,7 @@ use std::ffi::{OsString, OsStr};
 use std::io::{self, Write, Read, BufReader, BufRead};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::error::Error;
+use std::collections::HashMap;
 
 use clap::Parser;
 use age::{self, ssh};
@@ -391,15 +392,20 @@ fn decrypt_password(identity_file: &Path, agefile: &Path, identities: &mut Vec<B
     Ok(password_decryptor.decrypt(identities.iter().map(|i| i.as_ref()))?)
 }
 
-fn get_editor() -> String {
+fn get_editor() -> (String, Vec<String>) {
     let mut editors = ["nvim", "vim", "emacs", "nano", "vi"].into_iter();
-    env::var_os("EDITOR").map_or_else(|| loop {
+    let mut editor_args = HashMap::new();
+    editor_args.insert("nvim".to_owned(), vec!["-c".to_owned(), ":setlocal noswapfile nobackup noundofile shada=\"\"".to_owned()]);
+    editor_args.insert("vim".to_owned(), vec!["-c".to_owned(), ":setlocal noswapfile nobackup noundofile viminfo=\"\"".to_owned()]);
+    let editor = env::var_os("EDITOR").map_or_else(|| loop {
         let candidate = editors.next().expect("Cannot find editor! Please set the EDITOR environment variable.");
         if let Ok(_) = which(candidate) {
             break candidate.to_owned();
         }
     },
-    |v| v.to_str().unwrap().to_owned())
+    |v| v.to_str().unwrap().to_owned());
+    let args = editor_args.remove(&editor).unwrap_or(vec![]);
+    (editor, args)
 }
 
 fn get_recipients_recursive(dir: &Path, recipients: &mut Vec<Box<dyn age::Recipient + Send>>) -> Result<(), Box<dyn Error>> {
@@ -470,8 +476,8 @@ fn edit(identity_file: PathBuf, store_dir: PathBuf, name: String) -> Result<(), 
     };
 
     // edit
-    let editor = get_editor();
-    Command::new(&editor).arg(&tmpfile_txt).status()?.exit_ok()?;
+    let (editor, args) = get_editor();
+    Command::new(&editor).args(args).arg(&tmpfile_txt).status()?.exit_ok()?;
 
     // compare
     if !tmpfile_txt.exists() {
