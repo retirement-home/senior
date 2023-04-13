@@ -445,8 +445,8 @@ fn encrypt_password(recipients_dir: &Path, mut source: impl Read, target_file: &
     Ok(())
 }
 
-fn check_for_git(canon_store_dir: &Path) -> std::io::Result<bool> {
-    Ok(Command::new("git").arg("-C").arg(canon_store_dir).arg("rev-parse").stdout(Stdio::piped()).stderr(Stdio::piped()).status()?.success())
+fn check_for_git(canon_store_dir: &Path) -> bool {
+    which::which("git").map_or_else(|_| false, |v| Command::new(v).arg("-C").arg(canon_store_dir).arg("rev-parse").stdout(Stdio::piped()).stderr(Stdio::piped()).status().expect("Could not run git rev-parse!").success())
 }
 
 // edit store_dir/name.age
@@ -493,7 +493,7 @@ fn edit(identity_file: PathBuf, store_dir: PathBuf, name: String) -> Result<(), 
     drop(tmp_dir);
 
     // git add/commit
-    if check_for_git(&canon_store_dir)? {
+    if check_for_git(&canon_store_dir) {
         Command::new("git").arg("-C").arg(canon_store_dir).arg("add").arg(&agefile).status()?.exit_ok()?;
         let message = format!("{} password for {} using {}", if old_content.is_empty() { "Add" } else { "Edit" }, agefile.with_extension("").strip_prefix(&canon_store_dir)?.display(), &editor);
         Command::new("git").arg("-C").arg(canon_store_dir).args(["commit", "-m", &message]).status()?.exit_ok()?;
@@ -637,7 +637,7 @@ fn move_name(identity_file: PathBuf, store_dir: PathBuf, old_name: String, new_n
     fs::rename(&old_path, &new_path)?;
 
     // git add/commit
-    if check_for_git(&canon_store_dir)? {
+    if check_for_git(&canon_store_dir) {
         Command::new("git").arg("-C").arg(&canon_store_dir).args(["rm", "-r"]).arg(&old_path).status()?.exit_ok()?;
         Command::new("git").arg("-C").arg(&canon_store_dir).arg("add").arg(&new_path).status()?.exit_ok()?;
         let message = format!("Rename {} to {}", canonicalise(&store_dir.join(&old_name))?.strip_prefix(&canon_store_dir)?.display(), store_dir.join(&new_name).strip_prefix(&canon_store_dir)?.display());
@@ -664,7 +664,7 @@ fn remove(identity_file: PathBuf, store_dir: PathBuf, recursive: bool, name: Str
     }
 
     // git add/commit
-    if check_for_git(&canon_store_dir)? {
+    if check_for_git(&canon_store_dir) {
         Command::new("git").arg("-C").arg(&canon_store_dir).args(["rm", "-r"]).arg(&path).status()?.exit_ok()?;
         let message = format!("Remove {}", canonicalise(&store_dir.join(&name))?.strip_prefix(&canon_store_dir)?.display());
         Command::new("git").arg("-C").arg(&canon_store_dir).args(["commit", "-m", &message]).status()?.exit_ok()?;
@@ -699,7 +699,7 @@ fn reencrypt(identity_file: &Path) -> Result<bool, Box<dyn Error>> {
     reencrypt_recursive(identity_file, &identity_file.parent().unwrap().join(".recipients"), &mut identities, &identity_file.parent().unwrap(), &mut collect)?;
 
     // git add
-    if check_for_git(&identity_file.parent().unwrap())? {
+    if check_for_git(&identity_file.parent().unwrap()) {
         Command::new("git").arg("-C").arg(&identity_file.parent().unwrap()).arg("add").args(collect).status()?.exit_ok()?;
         return Ok(true);
     }
