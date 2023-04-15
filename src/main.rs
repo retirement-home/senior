@@ -392,19 +392,18 @@ fn decrypt_password(identity_file: &Path, agefile: &Path, identities: &mut Vec<B
     Ok(password_decryptor.decrypt(identities.iter().map(|i| i.as_ref()))?)
 }
 
-fn get_editor() -> (String, Vec<String>) {
+fn get_editor() -> (OsString, Vec<&'static str>) {
     let mut editors = ["nvim", "vim", "emacs", "nano", "vi"].into_iter();
     let mut editor_args = HashMap::new();
-    editor_args.insert("nvim".to_owned(), vec!["-c".to_owned(), ":setlocal noswapfile nobackup noundofile shada=\"\"".to_owned()]);
-    editor_args.insert("vim".to_owned(), vec!["-c".to_owned(), ":setlocal noswapfile nobackup noundofile viminfo=\"\"".to_owned()]);
-    let editor = env::var_os("EDITOR").map_or_else(|| loop {
+    editor_args.insert("nvim", vec!["-c", ":setlocal noswapfile nobackup nowritebackup noundofile shada=\"\"", "-c", "echomsg 'Editing password file--disabled leaky options!'"]);
+    editor_args.insert("vim", vec!["-c", ":setlocal noswapfile nobackup nowritebackup noundofile viminfo=\"\"", "-c", "echomsg 'Editing password file--disabled leaky options!'"]);
+    let editor = env::var_os("EDITOR").unwrap_or_else(|| loop {
         let candidate = editors.next().expect("Cannot find editor! Please set the EDITOR environment variable.");
         if let Ok(_) = which(candidate) {
-            break candidate.to_owned();
+            break OsString::from(candidate);
         }
-    },
-    |v| v.to_str().unwrap().to_owned());
-    let args = editor_args.remove(&editor).unwrap_or(vec![]);
+    });
+    let args = editor_args.remove(editor.to_str().unwrap()).unwrap_or(vec![]);
     (editor, args)
 }
 
@@ -501,7 +500,7 @@ fn edit(identity_file: PathBuf, store_dir: PathBuf, name: String) -> Result<(), 
     // git add/commit
     if check_for_git(&canon_store_dir) {
         Command::new("git").arg("-C").arg(canon_store_dir).arg("add").arg(&agefile).status()?.exit_ok()?;
-        let message = format!("{} password for {} using {}", if old_content.is_empty() { "Add" } else { "Edit" }, agefile.with_extension("").strip_prefix(&canon_store_dir)?.display(), &editor);
+        let message = format!("{} password for {} using {}", if old_content.is_empty() { "Add" } else { "Edit" }, agefile.with_extension("").strip_prefix(&canon_store_dir)?.display(), editor.to_str().unwrap());
         Command::new("git").arg("-C").arg(canon_store_dir).args(["commit", "-m", &message]).status()?.exit_ok()?;
     }
     Ok(())
