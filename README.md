@@ -2,7 +2,9 @@
 
 A Password Manager Using [age](https://github.com/FiloSottile/age) for Encryption
 
-#### Contents:
+![senior demonstration](other/senior-demo.svg)
+
+## Contents:
 - [Features](#features)
 - [Usage](#usage)
 - [Install](#install)

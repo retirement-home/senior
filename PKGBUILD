@@ -11,6 +11,7 @@ optdepends=(git)
 makedepends=(cargo-nightly git)
 source=("git+${url}.git")
 md5sums=('SKIP')
+rustdir="src/senior"
 
 pkgver() {
 	cd "$pkgname"
@@ -18,7 +19,7 @@ pkgver() {
 }
 
 build() {
-	cd "$pkgname"
+	cd "$pkgname/$rustdir"
 	export RUSTUP_TOOLCHAIN=nightly
 	cargo build --bins --locked --release --target-dir target
 }
@@ -26,9 +27,9 @@ build() {
 package() {
 	cd "$pkgname"
 	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-	install -Dm755 target/release/senior -t "$pkgdir"/usr/bin/
-	install -Dm755 target/release/senior-agent -t "$pkgdir"/usr/bin/
+	install -Dm755 $rustdir/target/release/senior -t "$pkgdir"/usr/bin/
+	install -Dm755 $rustdir/target/release/senior-agent -t "$pkgdir"/usr/bin/
 	install -Dm755 src/seniormenu -t "$pkgdir"/usr/bin/
-	install -Dm644 completions/senior.zsh "$pkgdir"/usr/share/zsh/site-functions/_senior
-	install -Dm644 completions/senior.bash "$pkgdir"/usr/share/bash-completion/completions/senior
+	install -Dm644 src/completions/senior.zsh "$pkgdir"/usr/share/zsh/site-functions/_senior
+	install -Dm644 src/completions/senior.bash "$pkgdir"/usr/share/bash-completion/completions/senior
 }
