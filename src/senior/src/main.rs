@@ -27,6 +27,22 @@ use atty::Stream;
 
 use cli::{Cli, CliCommand};
 
+enum DisplayServer {
+    Wayland,
+    X11,
+    Windows,
+}
+
+fn get_display_server() -> DisplayServer {
+    if let Some(_) = env::var_os("WAYLAND_DISPLAY") {
+        DisplayServer::Wayland
+    } else if let Some(_) = env::var_os("DISPLAY") {
+        DisplayServer::X11
+    } else {
+        DisplayServer::Windows
+    }
+}
+
 fn agent_socket_name() -> &'static str {
      use NameTypeSupport::*;
      match NameTypeSupport::query() {
@@ -620,9 +636,17 @@ fn show(identity_file: PathBuf, store_dir: PathBuf, clip: bool, key: Option<Stri
         },
     };
     println!("{}", to_print);
-    // TODO: support X11, Android, Windows
+    // TODO: support Android, Windows
     if clip {
-        Command::new("wl-copy").args(["-o", &to_clip]).status()?.exit_ok()?;
+        match get_display_server() {
+            DisplayServer::Wayland => Command::new("wl-copy").args(["-o", to_clip]).status()?.exit_ok()?,
+            DisplayServer::X11 => {
+                let mut xclip = Command::new("xclip").stdin(Stdio::piped()).spawn()?;
+                xclip.stdin.take().unwrap().write_all(to_clip.as_bytes())?;
+                xclip.wait()?.exit_ok()?;
+            },
+            _ => return Err("Clipboard only implemented for Wayland (wl-copy) and X11 (xclip) yet!".into()),
+        }
     }
     Ok(())
 }

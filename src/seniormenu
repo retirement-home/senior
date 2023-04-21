@@ -3,26 +3,47 @@
 shopt -s nullglob globstar
 
 typeit=0
-if [[ $1 == "--type" ]]; then
-	typeit=1
-	shift
+ydotool_is_used=0
+
+while [ $# -gt 0 ]; do
+	case $1 in
+		--menu)
+			dmenu="$2"
+			shift
+			shift
+			;;
+		--dotool)
+			dotool="$2"
+			shift
+			shift
+			;;
+		--type)
+			typeit=1
+			shift
+			;;
+		-h|--help)
+			echo "Usage: seniormenu [--menu <dmenu-wl>] [--dotool <ydotool>] [--type] [<passwordkey1> <passwordkey2> ...]"
+			exit 0
+			;;
+		-*,--*)
+			echo "Unkown option $1\nFor help, use -h or --help"
+			exit 1
+			;;
+		*)
+			break;
+			;;
+	esac
+done
+
+if [ -n $WAYLAND_DISPLAY ]; then
+	[ -z "$menu" ] && menu=dmenu-wl
+	[ -z "$dotool" ] && dotool="ydotool type --file /dev/stdin" && ydotool_is_used=1
+elif [ -n $DISPLAY ]; then
+	[ -z "$menu" ] && menu=dmenu
+	[ -z "$dotool" ] && dotool="xdotool type --clearmodifiers --file -"
 fi
 
-if [[ $1 == "--dmenu" ]]; then
-	shift
-	arg_dmenu=$1
-	shift
-fi
-
-if [[ -n $arg_dmenu ]]; then
-	dmenu=$arg_dmenu
-elif [[ -n $WAYLAND_DISPLAY ]]; then
-	dmenu=dmenu-wl
-	xdotool="ydotool type --file /dev/stdin"
-elif [[ -n $DISPLAY ]]; then
-	dmenu=dmenu
-	xdotool="xdotool type --clearmodifiers --file -"
-else
+if [ -z "$menu" ] || ([ $typeit -eq 1 ] && [ -z "$dotool" ]); then
 	echo "Error: No Wayland or X11 display detected" >&2
 	exit 1
 fi
@@ -32,14 +53,24 @@ password_files=( "$prefix"/**/*.age )
 password_files=( "${password_files[@]#"$prefix"/}" )
 password_files=( "${password_files[@]%.age}" )
 
-password=$(printf '%s\n' "${password_files[@]}" | $dmenu)
+password=$(printf '%s\n' "${password_files[@]}" | $menu)
 
-[[ -n $password ]] || exit
+[ -n "$password" ] || exit
 
 key="${1:-password}"
-if [[ $typeit -eq 0 ]]; then
-	senior show -c --key "$key" "$password"
+if [ $typeit -eq 0 ]; then
+	senior show --clip --key "$key" "$password"
 else
-	senior show --key "$key" "$password" | { IFS= read -r pass; printf %s "$pass"; } | $xdotool
-	[ "$key" = "password" ] || [ "$key" = "otp" ] && sleep 0.1 && ydotool key 28:1 28:0
+	while true; do
+		senior show --key "$key" "$password" | { IFS= read -r pass; printf %s "$pass"; } | $dotool
+		shift
+		if [ ydotool_is_used -eq 1 ]; then
+			if [ $# -gt 0 ]; then
+				key="$1" && sleep 0.1 && ydotool key 15:1 15:0
+			else
+				[ "$key" = "password" ] || [ "$key" = "otp" ] && sleep 0.1 && ydotool key 28:1 28:0
+				break
+			fi
+		fi
+	done
 fi

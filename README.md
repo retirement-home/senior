@@ -116,15 +116,23 @@ Same goes for `senior edit` and using `friends/.recipients/*` to encrypt.
 This is very practical for `seniormenu`, as it only looks inside the main store.
 
 ### seniormenu
-seniormenu uses `dmenu-wl` or `dmenu` (can be changed with `--dmenu <othermenu>`) to let you select a password for the clipboard.
-With `--type` the password gets typed using `ydotool`/`xdotool`.
-You can provide a `<key>` to get another value from the password file.
+Usage:
+```
+seniormenu [--menu <dmenu-wl>] [--dotool <ydotool>] [--type] [<key1> <key2> ...]
+```
+seniormenu uses `dmenu-wl` or `dmenu` (can be changed with `--menu <othermenu>`) to let you select a password for the clipboard.
+You can provide a `<key>` to get another value from the password file (like login, email, ...).
+
+With `--type` the password gets typed using `ydotool` (for Wayland) / `xdotool` (for X11). The default can be changed with `--dotool <otherdotool>`.
+
+ydotool feature only: You can specify multiple keys. Inbetween keys, a TAB is typed. After typing the password or the otp, the ENTER key gets pressed.
+
 Set up some keybindings in your window manager to quickly clip/type passwords.
 An example for sway/i3 is:
 ```
-bindsym $mod+u exec seniormenu --type --dmenu bemenu
-bindsym $mod+y exec seniormenu --type --dmenu bemenu otp
-bindsym $mod+t exec seniormenu --type --dmenu bemenu login
+bindsym $mod+u exec seniormenu --menu bemenu --type
+bindsym $mod+y exec seniormenu --menu bemenu --type otp
+bindsym $mod+t exec seniormenu --menu bemenu --type login password
 ```
 
 ### senior-agent
@@ -186,7 +194,7 @@ mysupersafepassword
 login: myuser
 ```
 
-With `senior edit ...`, after editing the decrypted text file it gets encrypted via
+With `senior edit ...`, after editing the decrypted text file, it gets encrypted via
 ```sh
 $ age -e -i .identity.age -R .recipients/main.txt -o gitlab.com.age /tmp/gitlab.com.txt
 ```
