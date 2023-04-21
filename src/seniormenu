@@ -64,13 +64,15 @@ else
 	while true; do
 		senior show --key "$key" "$password" | { IFS= read -r pass; printf %s "$pass"; } | $dotool
 		shift
-		if [ ydotool_is_used -eq 1 ]; then
+		if [ $ydotool_is_used -eq 1 ]; then
 			if [ $# -gt 0 ]; then
 				key="$1" && sleep 0.1 && ydotool key 15:1 15:0
 			else
 				[ "$key" = "password" ] || [ "$key" = "otp" ] && sleep 0.1 && ydotool key 28:1 28:0
-				break
+				exit
 			fi
+		else
+			exit
 		fi
 	done
 fi
