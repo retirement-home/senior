@@ -387,7 +387,10 @@ fn init_helper(
     // set up default values
     let recipient_alias = recipient_alias.unwrap_or_else(|| {
         env::var_os("USER")
-            .expect("Could not get the username. Please manually supply a recipient-alias.")
+            .unwrap_or_else(|| {
+                env::var_os("USERNAME")
+                    .expect("Could not get the username. Please manually supply a recipient-alias.")
+            })
             .into_string()
             .unwrap()
     });
