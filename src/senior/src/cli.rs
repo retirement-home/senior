@@ -1,6 +1,6 @@
 use std::ffi::OsString;
 
-use clap::{Parser, Subcommand, builder::ValueHint};
+use clap::{builder::ValueHint, Parser, Subcommand};
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
@@ -108,4 +108,3 @@ pub enum CliCommand {
     /// Reencrypt the entire store
     Reencrypt,
 }
-
