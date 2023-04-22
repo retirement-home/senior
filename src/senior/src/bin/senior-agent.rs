@@ -14,14 +14,6 @@ fn handle_error(conn: io::Result<LocalSocketStream>) -> Option<LocalSocketStream
     }
 }
 
-fn print_conn(
-    conn: &mut interprocess::local_socket::LocalSocketStream,
-    s: &str,
-) -> std::io::Result<()> {
-    //print!("{}", s);
-    write!(conn, "{}", s)
-}
-
 fn main() -> Result<(), Box<dyn Error>> {
     let name = {
         use NameTypeSupport::*;
@@ -73,8 +65,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 // read
                 let key = &buffer[2..];
                 match passphrases.contains_key(key) {
-                    true => print_conn(&mut conn, &format!("o: {}\n", &passphrases[key]))?,
-                    false => print_conn(&mut conn, &format!("e: Key {} is not present!\n", key))?,
+                    true => write!(&mut conn, "o: {}\n", &passphrases[key])?,
+                    false => write!(&mut conn, "e: Key {} is not present!\n", key)?,
                 }
             }
             "w" => {
@@ -99,7 +91,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 passphrases.insert(key, pass);
             }
             _ => {
-                print_conn(&mut conn, "e: Command not implemented!")?;
+                write!(&mut conn, "e: Command not implemented!")?;
                 continue;
             }
         }
