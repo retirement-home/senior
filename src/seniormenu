@@ -69,10 +69,10 @@ else
 				key="$1" && sleep 0.1 && ydotool key 15:1 15:0
 			else
 				[ "$key" = "password" ] || [ "$key" = "otp" ] && sleep 0.1 && ydotool key 28:1 28:0
-				exit
+				break
 			fi
 		else
-			exit
+			break
 		fi
 	done
 fi
