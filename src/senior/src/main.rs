@@ -1,4 +1,4 @@
-#![feature(exit_status_error)]
+// #![feature(exit_status_error)]
 
 pub mod cli;
 
@@ -8,7 +8,7 @@ use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{ChildStdout, Command, Stdio};
+use std::process::{ExitStatus, ChildStdout, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, str::FromStr};
 
@@ -31,6 +31,16 @@ enum DisplayServer {
     Wayland,
     X11,
     Windows,
+}
+
+trait ExitOk {
+    fn exit_ok(&self) -> Result<(), Box<dyn Error>>; 
+}
+impl ExitOk for ExitStatus {
+    fn exit_ok(&self) -> Result<(), Box<dyn Error>> {
+        assert!(self.success(), "Error");
+        Ok(())
+    }
 }
 
 fn get_display_server() -> DisplayServer {
