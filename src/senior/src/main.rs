@@ -1,4 +1,5 @@
 // #![feature(exit_status_error)]
+#![allow(unstable_name_collisions)]
 
 pub mod cli;
 
@@ -8,7 +9,7 @@ use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{ExitStatus, ChildStdout, Command, Stdio};
+use std::process::{ChildStdout, Command, ExitStatus, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, str::FromStr};
 
@@ -34,11 +35,11 @@ enum DisplayServer {
 }
 
 trait ExitOk {
-    fn exit_ok(&self) -> Result<(), Box<dyn Error>>; 
+    fn exit_ok(&self) -> Result<(), Box<dyn Error>>;
 }
 impl ExitOk for ExitStatus {
     fn exit_ok(&self) -> Result<(), Box<dyn Error>> {
-        assert!(self.success(), "Error");
+        assert!(self.success(), "Non-zero returncode!");
         Ok(())
     }
 }
@@ -634,8 +635,6 @@ fn get_editor() -> (OsString, Vec<&'static str>) {
         vec![
             "-c",
             ":setlocal noswapfile nobackup nowritebackup noundofile viminfo=\"\"",
-            "-c",
-            "echomsg 'Editing password file--disabled leaky options!'",
         ],
     );
     let editor = env::var_os("EDITOR").unwrap_or_else(|| loop {
