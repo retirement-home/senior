@@ -28,12 +28,6 @@ use which::which;
 
 use cli::{Cli, CliCommand};
 
-enum DisplayServer {
-    Wayland,
-    X11,
-    Windows,
-}
-
 trait ExitOk {
     fn exit_ok(&self) -> Result<(), Box<dyn Error>>;
 }
@@ -44,14 +38,24 @@ impl ExitOk for ExitStatus {
     }
 }
 
+enum DisplayServer {
+    Wayland,
+    X11,
+    Termux,
+    Windows,
+}
+
 fn get_display_server() -> DisplayServer {
     if let Some(_) = env::var_os("WAYLAND_DISPLAY") {
-        DisplayServer::Wayland
+        return DisplayServer::Wayland;
     } else if let Some(_) = env::var_os("DISPLAY") {
-        DisplayServer::X11
-    } else {
-        DisplayServer::Windows
+        return DisplayServer::X11;
+    } else if let Some(v) = env::var_os("PREFIX") {
+        if v.into_string().unwrap().contains("termux") {
+            return DisplayServer::Termux;
+        }
     }
+    DisplayServer::Windows
 }
 
 fn agent_socket_name() -> &'static str {
@@ -979,6 +983,16 @@ fn show(
                 let mut xclip = Command::new("xclip").stdin(Stdio::piped()).spawn()?;
                 xclip.stdin.take().unwrap().write_all(to_clip.as_bytes())?;
                 xclip.wait()?.exit_ok()?;
+            }
+            DisplayServer::Termux => {
+                if which::which("termux-clipboard-set").is_err() {
+                    return Err("Please install Termux:API (https://f-droid.org/en/packages/com.termux.api/) and `pkg install termux-api`!".into());
+                } else {
+                    Command::new("termux-clipboard-set")
+                        .arg(to_clip)
+                        .status()?
+                        .exit_ok()?;
+                }
             }
             _ => {
                 return Err(
