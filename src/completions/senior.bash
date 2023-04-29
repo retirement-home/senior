@@ -321,7 +321,7 @@ _senior() {
                     COMPREPLY=()
                     ;;
             esac
-            _senior_complete_entries
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
         senior__help__print__dir)

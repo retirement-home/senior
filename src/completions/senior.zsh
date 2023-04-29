@@ -101,7 +101,7 @@ _arguments "${_arguments_options[@]}" \
 '--clip[Add the value to the clipboard]' \
 '-h[Print help]' \
 '--help[Print help]' \
-'::name -- Name of the password or directory:_senior_complete_entries_with_subdirs' \
+'::name -- Name of the password or directory:_senior_complete_entries' \
 && ret=0
 ;;
 (mv)

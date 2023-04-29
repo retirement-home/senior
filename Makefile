@@ -1,4 +1,4 @@
-.PHONY: howto clean_completions install uninstall
+.PHONY: howto clean_completions build install uninstall
 
 ifeq ($(PREFIX),)
 PREFIX := /usr
@@ -14,10 +14,10 @@ RUSTDIR := src/senior
 howto:
 	$(info run `sudo make install` or `sudo make uninstall`)
 
-$(RUSTDIR)/target/release/senior $(RUSTDIR)/target/release/senior-agent:
-	RUSTUP_TOOLCHAIN=nightly cargo build --manifest-path $(RUSTDIR)/Cargo.toml --bins --locked --release --target-dir $(RUSTDIR)/target
+build:
+	cargo build --manifest-path $(RUSTDIR)/Cargo.toml --bins --locked --release --target-dir $(RUSTDIR)/target
 
-install: $(RUSTDIR)/target/release/senior $(RUSTDIR)/target/release/senior-agent
+install: build
 	mkdir -p $(shell dirname $(BINARY))
 	mkdir -p $(shell dirname $(ZSHCOMPLETION))
 	mkdir -p $(shell dirname $(BASHCOMPLETION))
