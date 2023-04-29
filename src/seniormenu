@@ -35,10 +35,10 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-if [ -n $WAYLAND_DISPLAY ]; then
+if [ -n "$WAYLAND_DISPLAY" ]; then
 	[ -z "$menu" ] && menu=dmenu-wl
 	[ -z "$dotool" ] && dotool="ydotool type --file /dev/stdin" && ydotool_is_used=1
-elif [ -n $DISPLAY ]; then
+elif [ -n "$DISPLAY" ]; then
 	[ -z "$menu" ] && menu=dmenu
 	[ -z "$dotool" ] && dotool="xdotool type --clearmodifiers --file -"
 fi
