@@ -49,11 +49,9 @@ if [ -z "$menu" ] || ([ $typeit -eq 1 ] && [ -z "$dotool" ]); then
 fi
 
 prefix=$(senior print-dir)
-password_files=( "$prefix"/**/*.age )
-password_files=( "${password_files[@]#"$prefix"/}" )
-password_files=( "${password_files[@]%.age}" )
+password_files=$(find -L "$prefix" \( -name '.*' \) -prune -o $@ -print 2>/dev/null | sed -e "s#${prefix}/\{0,1\}"'##' -e 's#\.age##' -e 's#\\#\\\\#g' -e 's#:#\\:#g' | sort)
 
-password=$(printf '%s\n' "${password_files[@]}" | $menu)
+password=$(printf '%s\n' "$password_files" | $menu)
 
 [ -n "$password" ] || exit
 
