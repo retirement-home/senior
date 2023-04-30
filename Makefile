@@ -1,8 +1,6 @@
 .PHONY: howto clean_completions build install uninstall
 
-ifeq ($(PREFIX),)
-PREFIX := /usr
-endif
+PREFIX ?= /usr
 BINARY := $(PREFIX)/local/bin/senior
 BINARYAGENT := $(PREFIX)/local/bin/senior-agent
 BINARYMENU := $(PREFIX)/local/bin/seniormenu
