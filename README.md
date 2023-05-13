@@ -4,7 +4,7 @@ A Password Manager Using [age](https://github.com/FiloSottile/age) for Encryptio
 
 ![senior demonstration](other/senior-demo.svg)
 
-## Contents:
+## Contents
 - [Features](#features)
 - [Usage](#usage)
 - [Install](#install)
@@ -161,7 +161,7 @@ sudo make install
 ```
 Make sure you have the dependencies installed (look at `depends` and `makedepends` in the [PKGBUILD](PKGBUILD))
 
-## How it works
+## How It Works
 Your store is just a directory, usually `~/.local/share/senior/main/`. Run `senior print-dir` to find out.
 Let us look at the directory tree.
 ```sh
@@ -196,6 +196,6 @@ login: myuser
 
 With `senior edit ...`, after editing the decrypted text file, it gets encrypted via
 ```sh
-$ age -e -i .identity.age -R .recipients/main.txt -o gitlab.com.age /tmp/gitlab.com.txt
+$ age -e -R .recipients/main.txt -o gitlab.com.age /tmp/gitlab.com.txt
 ```
 
