@@ -875,9 +875,10 @@ fn show(
 
     let name_dir = store_dir.join(&name);
     let agefile = store_dir.join(format!("{}.age", &name));
+
     if !agefile.exists() {
         // maybe it is just a directory
-        if !name_dir.canonicalize()?.is_dir() {
+        if !name_dir.exists() || !name_dir.canonicalize()?.is_dir() {
             return Err(format!("The password {} does not exist.", agefile.display()).into());
         }
 
