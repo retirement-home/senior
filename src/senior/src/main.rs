@@ -1026,6 +1026,17 @@ fn move_name(
         new_path = store_dir.join(format!("{}.age", &new_name));
     }
 
+    let new_path_parent = new_path.parent().unwrap();
+    if !new_path_parent.exists() {
+        fs::create_dir_all(new_path_parent)?;
+    } else if new_path_parent.canonicalize()?.is_file() {
+        return Err(format!(
+            "The target directory {} must not be an existing file!",
+            new_path_parent.display()
+        )
+        .into());
+    }
+
     fs::rename(&old_path, &new_path)?;
 
     // git add/commit
