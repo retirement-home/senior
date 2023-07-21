@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{ChildStdout, Command, ExitStatus, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -179,7 +179,7 @@ fn prompt_password(prompt: &str) -> Result<String, Box<dyn Error>> {
         read_ok(&mut stdout_reader, &pinentry_program)?;
         stdin_writer.write_all(format!("SETPROMPT {}\n", prompt).as_bytes())?;
         read_ok(&mut stdout_reader, &pinentry_program)?;
-        stdin_writer.write_all(format!("GETPIN {}\n", prompt).as_bytes())?;
+        stdin_writer.write_all("GETPIN\n".as_bytes())?;
         let mut pass = String::new();
         stdout_reader.read_line(&mut pass)?;
         pass.pop();
@@ -892,7 +892,14 @@ fn show(
         let mut tree = Command::new("tree")
             .args(["-N", "-C", "-l", "--noreport"])
             .arg(name_dir)
-            .output()?;
+            .output()
+            .unwrap_or_else(|e| {
+                if e.kind() == ErrorKind::NotFound {
+                    panic!("Cannot find `tree` in $PATH: {:?}", e);
+                } else {
+                    panic!("Cannot run `tree` command: {:?}", e);
+                }
+            });
         tree.status.exit_ok()?;
 
         // remove the first line
@@ -1290,68 +1297,6 @@ fn get_canonicalised_identity_file(
     }
 }
 
-// transition ssh-key .identity.txt to .identity.ssh | .identity.pass.ssh
-// for compatibility
-fn transition_compat(canonicalised_identity_file: &Path, store_dir: &Path) -> Option<PathBuf> {
-    let transition_identity_file = match canonicalised_identity_file.file_name() {
-        Some(_) => canonicalised_identity_file.to_owned(),
-        None => store_dir.join(".identity.txt"),
-    };
-    if transition_identity_file
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        == ".identity.txt"
-        && transition_identity_file.is_file()
-    {
-        let mut keyfile_bufread = BufReader::new(
-            File::open(&transition_identity_file).expect("Cannot open transition identity file"),
-        );
-        let new_name = match ssh::Identity::from_buffer(
-            &mut keyfile_bufread,
-            Some(transition_identity_file.to_str().unwrap().to_owned()),
-        ) {
-            Ok(i) => match i {
-                ssh::Identity::Encrypted(_) => {
-                    fs::rename(
-                        &transition_identity_file,
-                        transition_identity_file
-                            .parent()
-                            .unwrap()
-                            .join(".identity.pass.ssh"),
-                    )
-                    .expect("Could not rename.");
-                    ".identity.pass.ssh"
-                }
-                ssh::Identity::Unencrypted(_) => {
-                    fs::rename(
-                        &transition_identity_file,
-                        transition_identity_file
-                            .parent()
-                            .unwrap()
-                            .join(".identity.ssh"),
-                    )
-                    .expect("Could not rename.");
-                    ".identity.ssh"
-                }
-                _ => "",
-            },
-            _ => "",
-        };
-        if !new_name.is_empty() {
-            eprintln!("Renamed .identity.txt to {}", new_name);
-            match canonicalised_identity_file.file_name() {
-                Some(_) => {
-                    return Some(canonicalised_identity_file.parent().unwrap().join(new_name))
-                }
-                None => {}
-            }
-        }
-    }
-    return None;
-}
-
 fn main() -> Result<(), Box<dyn Error>> {
     let mut cli = Cli::parse();
 
@@ -1425,7 +1370,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // show/edit: get the correct identity file (respecting symbolic links)
-    let mut canonicalised_identity_file = match cli.command {
+    let canonicalised_identity_file = match cli.command {
         CliCommand::Show { ref name, .. }
         | CliCommand::Edit { ref name }
         | CliCommand::Rm { ref name, .. } => get_canonicalised_identity_file(&store_dir, name)?,
@@ -1453,10 +1398,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         _ => PathBuf::new(),
     };
-
-    if let Some(new_path) = transition_compat(&canonicalised_identity_file, &store_dir) {
-        canonicalised_identity_file = new_path;
-    }
 
     match cli.command {
         CliCommand::Init {
