@@ -75,6 +75,9 @@ _senior() {
             senior,add-recipient)
                 cmd="senior__add__recipient"
                 ;;
+            senior,change-passphrase)
+                cmd="senior__change__passphrase"
+                ;;
             senior,clone)
                 cmd="senior__clone"
                 ;;
@@ -107,6 +110,9 @@ _senior() {
                 ;;
             senior__help,add-recipient)
                 cmd="senior__help__add__recipient"
+                ;;
+            senior__help,change-passphrase)
+                cmd="senior__help__change__passphrase"
                 ;;
             senior__help,clone)
                 cmd="senior__help__clone"
@@ -145,7 +151,7 @@ _senior() {
 
     case "${cmd}" in
         senior)
-            opts="-s -h -V --store --help --version init clone edit show mv rm print-dir git add-recipient reencrypt help"
+            opts="-s -h -V --store --help --version init clone edit show mv rm print-dir git add-recipient reencrypt change-passphrase help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -171,6 +177,20 @@ _senior() {
             ;;
         senior__add__recipient)
             opts="-h --help <PUBLIC KEY> <ALIAS>"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        senior__change__passphrase)
+            opts="-h --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -213,7 +233,7 @@ _senior() {
             COMPREPLY+=($(compgen -W "init push pull config log reflog rebase" -- ${cur}))
             ;;
         senior__help)
-            opts="init clone edit show mv rm print-dir git add-recipient reencrypt help"
+            opts="init clone edit show mv rm print-dir git add-recipient reencrypt change-passphrase help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -227,6 +247,20 @@ _senior() {
             return 0
             ;;
         senior__help__add__recipient)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        senior__help__change__passphrase)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

@@ -902,8 +902,7 @@ fn show(
         // this pattern is ".age\n".as_bytes() WITH the colour encoding for the terminal
         let pattern = [46, 97, 103, 101, 27, 91, 48, 109, 10];
         for removal_index in indices_of_pattern(&tree.stdout, &pattern).iter().rev() {
-            //                                               -1 to not remove the "\n"
-            tree.stdout
+            tree.stdout //                                             -1 to not remove the "\n"
                 .drain(*removal_index..(*removal_index + pattern.len() - 1));
         }
 

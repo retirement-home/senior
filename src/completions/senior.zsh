@@ -153,6 +153,12 @@ _arguments "${_arguments_options[@]}" \
 '--help[Print help]' \
 && ret=0
 ;;
+(change-passphrase)
+_arguments "${_arguments_options[@]}" \
+'-h[Print help]' \
+'--help[Print help]' \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" \
 ":: :_senior__help_commands" \
@@ -205,6 +211,10 @@ _arguments "${_arguments_options[@]}" \
 _arguments "${_arguments_options[@]}" \
 && ret=0
 ;;
+(change-passphrase)
+_arguments "${_arguments_options[@]}" \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" \
 && ret=0
@@ -231,6 +241,7 @@ _senior_commands() {
 'git:Run git commands in the store' \
 'add-recipient:Add recipient' \
 'reencrypt:Reencrypt the entire store' \
+'change-passphrase:Change the store'\''s passphrase' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'senior commands' commands "$@"
@@ -244,6 +255,16 @@ _senior__add-recipient_commands() {
 _senior__help__add-recipient_commands() {
     local commands; commands=()
     _describe -t commands 'senior help add-recipient commands' commands "$@"
+}
+(( $+functions[_senior__change-passphrase_commands] )) ||
+_senior__change-passphrase_commands() {
+    local commands; commands=()
+    _describe -t commands 'senior change-passphrase commands' commands "$@"
+}
+(( $+functions[_senior__help__change-passphrase_commands] )) ||
+_senior__help__change-passphrase_commands() {
+    local commands; commands=()
+    _describe -t commands 'senior help change-passphrase commands' commands "$@"
 }
 (( $+functions[_senior__clone_commands] )) ||
 _senior__clone_commands() {
@@ -288,6 +309,7 @@ _senior__help_commands() {
 'git:Run git commands in the store' \
 'add-recipient:Add recipient' \
 'reencrypt:Reencrypt the entire store' \
+'change-passphrase:Change the store'\''s passphrase' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'senior help commands' commands "$@"
