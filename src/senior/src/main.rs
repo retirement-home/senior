@@ -1246,6 +1246,129 @@ fn add_recipient(
     Ok(())
 }
 
+fn change_passphrase(identity_file: PathBuf) -> Result<(), Box<dyn Error>> {
+    let store_dir = identity_file.parent().unwrap();
+    let extension = identity_file.extension().unwrap().to_str().unwrap();
+    match extension {
+        "txt" => {
+            let passphrase = ask_passphrase_twice()?;
+            if passphrase.is_empty() {
+                println!("Empty passphrase. No changes.");
+                return Ok(());
+            }
+
+            let mut keyfile_content = vec![];
+            File::open(&identity_file)?.read_to_end(&mut keyfile_content)?;
+
+            let new_identity_file = store_dir.join(".identity.age");
+            let encryptor = age::Encryptor::with_user_passphrase(Secret::new(passphrase));
+            let mut write_to = encryptor.wrap_output(File::create(new_identity_file)?)?;
+            write_to.write_all(&keyfile_content)?;
+            write_to.finish()?;
+            fs::remove_file(&identity_file)?;
+        }
+        "age" => loop {
+            // passphrase age encrypted identity
+            let identity_decryptor = match age::Decryptor::new(File::open(&identity_file)?)? {
+                age::Decryptor::Passphrase(d) => d,
+                _ => return Err(format!("The identity file {} should be encrypted with a passphrase, not with recipients/identities!", identity_file.display()).into()),
+            };
+
+            let passphrase = rpassword::prompt_password("Enter the current passphrase: ")?;
+            let mut reader =
+                match identity_decryptor.decrypt(&Secret::new(passphrase.clone()), Some(32)) {
+                    Ok(r) => r,
+                    Err(age::DecryptError::DecryptionFailed) => {
+                        eprintln!("Decryption failed! Wrong passphrase? Please try again.");
+                        continue;
+                    }
+                    Err(e) => return Err(Box::new(e)),
+                };
+
+            let mut keyfile_content = vec![];
+            reader.read_to_end(&mut keyfile_content)?;
+
+            let passphrase = ask_passphrase_twice()?;
+            let new_identity_filename = if passphrase.is_empty() {
+                ".identity.txt"
+            } else {
+                ".identity.age"
+            };
+            let new_identity_file = store_dir.join(new_identity_filename);
+            if passphrase.is_empty() {
+                File::create(new_identity_file)?.write_all(&keyfile_content)?;
+                fs::remove_file(&identity_file)?;
+            } else {
+                let tmp_dir = TempDir::new("senior")?;
+                let tmp_identity_file = tmp_dir.path().join(new_identity_filename);
+                let encryptor = age::Encryptor::with_user_passphrase(Secret::new(passphrase));
+                let mut write_to = encryptor.wrap_output(File::create(&tmp_identity_file)?)?;
+                write_to.write_all(&keyfile_content)?;
+                write_to.finish()?;
+                fs::copy(&tmp_identity_file, new_identity_file)?;
+            }
+            break;
+        },
+        "ssh" => {
+            // ssh key (with or without passphrase)
+            let old_passphrase = match ssh::Identity::from_buffer(
+                BufReader::new(File::open(&identity_file)?),
+                Some(identity_file.to_str().unwrap().to_owned()),
+            )? {
+                ssh::Identity::Encrypted(k) => loop {
+                    let passphrase = rpassword::prompt_password("Enter the current passphrase: ")?;
+                    match k.decrypt(Secret::new(passphrase.clone())) {
+                        Ok(_) => {
+                            break passphrase;
+                        }
+                        Err(age::DecryptError::KeyDecryptionFailed) => {
+                            eprintln!("Decryption failed! Wrong passphrase? Please try again.");
+                            continue;
+                        }
+                        Err(e) => return Err(Box::new(e)),
+                    }
+                },
+                ssh::Identity::Unencrypted(_) => String::from(""),
+                ssh::Identity::Unsupported(k) => {
+                    return Err(format!(
+                        "The ssh identity key type of {} is not supported by age: {:?}",
+                        identity_file.display(),
+                        k
+                    )
+                    .into())
+                }
+            };
+            let new_passphrase = ask_passphrase_twice()?;
+            if old_passphrase.is_empty() && new_passphrase.is_empty() {
+                println!("Empty passphrase. No changes.");
+                return Ok(());
+            }
+            Command::new("ssh-keygen")
+                .args([
+                    "-p",
+                    "-f",
+                    identity_file.to_str().unwrap(),
+                    "-P",
+                    &old_passphrase,
+                    "-N",
+                    &new_passphrase,
+                ])
+                .status()?
+                .exit_ok()?;
+            match (old_passphrase.is_empty(), new_passphrase.is_empty()) {
+                (true, false) => fs::rename(&identity_file, store_dir.join(".identity.pass.ssh"))?,
+                (false, true) => fs::rename(&identity_file, store_dir.join(".identity.ssh"))?,
+                _ => {}
+            }
+        }
+        _ => panic!(
+            "Identity file with name {} not supported!",
+            identity_file.file_name().unwrap().to_str().unwrap()
+        ),
+    };
+    Ok(())
+}
+
 fn get_canonicalised_identity_file(
     store_dir: &Path,
     name: &str,
@@ -1378,7 +1501,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 true => old_canonicalised_identity_file,
             }
         }
-        CliCommand::AddRecipient { .. } | CliCommand::Reencrypt => {
+        CliCommand::AddRecipient { .. } | CliCommand::Reencrypt | CliCommand::ChangePassphrase => {
             get_canonicalised_identity_file(&store_dir, "")?
         }
         _ => PathBuf::new(),
@@ -1427,6 +1550,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             Ok(())
         }
-        CliCommand::ChangePassphrase => Ok(()),
+        CliCommand::ChangePassphrase => change_passphrase(canonicalised_identity_file),
     }
 }
