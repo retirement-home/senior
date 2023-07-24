@@ -964,7 +964,7 @@ fn show(
         },
     };
     println!("{}", to_print);
-    // TODO: support Android, Windows
+    // TODO: support Windows
     if clip {
         match get_display_server() {
             DisplayServer::Wayland => Command::new("wl-copy")
@@ -988,7 +988,7 @@ fn show(
             }
             _ => {
                 return Err(
-                    "Clipboard only implemented for Wayland (wl-copy) and X11 (xclip) yet!".into(),
+                    "Clipboard only implemented for Wayland (wl-copy), X11 (xclip) and Termux (termux-clipboard-set) yet!".into(),
                 )
             }
         }

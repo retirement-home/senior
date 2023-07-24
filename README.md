@@ -136,7 +136,7 @@ bindsym $mod+t exec seniormenu --menu bemenu --type login password
 ```
 
 ### senior-agent
-If you have set a passphrase to protect your identity then running
+If you have set a passphrase to protect your identity, then running
 `age -d -i .identity.age example.com.age`
 requires you to enter the passphrase each time.
 Because this is very cumbersome, senior provides an agent.
