@@ -157,7 +157,12 @@ makepkg -sic
 
 ### Other Systems
 ```sh
+# installing:
+make build
 sudo make install
+
+# uninstalling:
+sudo make uninstall
 ```
 Make sure you have the dependencies installed (look at `depends` and `makedepends` in the [PKGBUILD](PKGBUILD))
 

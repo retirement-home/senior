@@ -10,10 +10,12 @@ BASHCOMPLETION := $(PREFIX)/local/share/bash-completion/completions/senior
 RUSTDIR := src/senior
 
 howto:
-	$(info run `sudo make install` or `sudo make uninstall`)
+	$(info run `make build && sudo make install` or `sudo make uninstall`)
 
-build:
+$(RUSTDIR)/target/release/senior $(RUSTDIR)/target/release/senior-agent: src/senior/src/*
 	cargo build --manifest-path $(RUSTDIR)/Cargo.toml --bins --locked --release --target-dir $(RUSTDIR)/target
+
+build: $(RUSTDIR)/target/release/senior $(RUSTDIR)/target/release/senior-agent
 
 install: build
 	mkdir -p $(shell dirname $(BINARY))
