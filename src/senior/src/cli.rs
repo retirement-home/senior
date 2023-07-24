@@ -46,7 +46,7 @@ pub enum CliCommand {
         name: String,
     },
 
-    /// Show the password
+    /// Show a password
     Show {
         /// Show only this key;
         /// "password" shows the first line;
@@ -107,4 +107,7 @@ pub enum CliCommand {
 
     /// Reencrypt the entire store
     Reencrypt,
+
+    /// Change the store's passphrase
+    ChangePassphrase,
 }

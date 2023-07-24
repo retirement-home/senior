@@ -224,7 +224,7 @@ _senior_commands() {
 'init:Initialises a new store' \
 'clone:Clones a store from a git repository' \
 'edit:Edit/create a password' \
-'show:Show the password' \
+'show:Show a password' \
 'mv:Move a password' \
 'rm:Remove a password' \
 'print-dir:Print the directory of the store' \
@@ -281,7 +281,7 @@ _senior__help_commands() {
 'init:Initialises a new store' \
 'clone:Clones a store from a git repository' \
 'edit:Edit/create a password' \
-'show:Show the password' \
+'show:Show a password' \
 'mv:Move a password' \
 'rm:Remove a password' \
 'print-dir:Print the directory of the store' \

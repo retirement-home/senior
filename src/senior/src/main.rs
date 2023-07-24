@@ -16,14 +16,10 @@ use std::{env, str::FromStr};
 use age::secrecy::{ExposeSecret, Secret};
 use age::{self, ssh};
 use atty::Stream;
-use base32;
-use chrono;
 use clap::Parser;
 use interprocess::local_socket::{LocalSocketStream, NameTypeSupport};
-use rpassword;
 use sysinfo::{System, SystemExt};
 use tempdir::TempDir;
-use thotp;
 use which::which;
 
 use cli::{Cli, CliCommand};
@@ -46,9 +42,9 @@ enum DisplayServer {
 }
 
 fn get_display_server() -> DisplayServer {
-    if let Some(_) = env::var_os("WAYLAND_DISPLAY") {
+    if env::var_os("WAYLAND_DISPLAY").is_some() {
         return DisplayServer::Wayland;
-    } else if let Some(_) = env::var_os("DISPLAY") {
+    } else if env::var_os("DISPLAY").is_some() {
         return DisplayServer::X11;
     } else if let Some(v) = env::var_os("PREFIX") {
         if v.into_string().unwrap().contains("termux") {
@@ -76,7 +72,7 @@ fn agent_get_passphrase(key: &str) -> Result<Option<String>, Box<dyn Error>> {
     };
     let mut conn = BufReader::new(conn);
     conn.get_mut()
-        .write_all(format!("r {}\n", key.replace(r"\", r"\\").replace(" ", r"\ ")).as_bytes())?;
+        .write_all(format!("r {}\n", key.replace('\\', r"\\").replace(' ', r"\ ")).as_bytes())?;
     conn.read_line(&mut buffer)?;
     // remove trailing newline
     buffer.pop();
@@ -120,7 +116,7 @@ fn agent_set_passphrase(key: &str, passphrase: &str) -> Result<(), Box<dyn Error
     conn.get_mut().write_all(
         format!(
             "w {} {}\n",
-            key.replace(r"\", r"\\").replace(" ", r"\ "),
+            key.replace('\\', r"\\").replace(' ', r"\ "),
             passphrase
         )
         .as_bytes(),
@@ -158,12 +154,11 @@ fn prompt_password(prompt: &str) -> Result<String, Box<dyn Error>> {
             let gpgagent_conf = BufReader::new(File::open(gpgagent_file)?);
             gpgagent_conf
                 .lines()
-                .filter(|l| {
+                .find(|l| {
                     l.as_ref()
                         .expect("Cannot read gpg-agent.conf")
                         .starts_with("pinentry-program")
                 })
-                .next()
                 .map_or("pinentry".to_owned(), |l| {
                     l.expect("Cannot read line")["pinentry-program ".len()..].to_owned()
                 })
@@ -225,7 +220,7 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
     match identity {
         None => {
             let passphrase = ask_passphrase_twice()?;
-            let use_passphrase = passphrase != "";
+            let use_passphrase = !passphrase.is_empty();
             let identity_file = store_dir.join(if use_passphrase {
                 ".identity.age"
             } else {
@@ -234,7 +229,7 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
             let key = age::x25519::Identity::generate();
             let pubkey = key.to_public().to_string();
             fs::create_dir_all(store_dir)?;
-            let mut write_to = File::create(&identity_file)?;
+            let mut write_to = File::create(identity_file)?;
             if use_passphrase {
                 let encryptor = age::Encryptor::with_user_passphrase(Secret::new(passphrase));
                 let mut write_to = encryptor.wrap_output(&mut write_to).unwrap();
@@ -269,7 +264,7 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
                         age::IdentityFileEntry::Native(i) => {
                             println!("The supplied age identity is unencrypted. It is recommended to encrypt it with a passphrase.");
                             let passphrase = ask_passphrase_twice()?;
-                            let use_passphrase = passphrase != "";
+                            let use_passphrase = !passphrase.is_empty();
                             let identity_file = store_dir.join(if use_passphrase {
                                 ".identity.age"
                             } else {
@@ -330,7 +325,7 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
                                 gen_pubkey.stdout.pop();
                                 println!("Supplied ssh key is unencrypted. It is recommended to encrypt it with a passphrase.");
                                 let passphrase = ask_passphrase_twice()?;
-                                let use_passphrase = passphrase != "";
+                                let use_passphrase = !passphrase.is_empty();
                                 let identity_file = store_dir.join(if use_passphrase {
                                     ".identity.pass.ssh"
                                 } else {
@@ -348,13 +343,11 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
                                 }
                                 Ok(String::from_utf8(gen_pubkey.stdout)?)
                             }
-                            ssh::Identity::Unsupported(k) => {
-                                return Err(format!(
-                                    "Supplied ssh identity key type is not supported by age: {:?}",
-                                    k
-                                )
-                                .into())
-                            }
+                            ssh::Identity::Unsupported(k) => Err(format!(
+                                "Supplied ssh identity key type is not supported by age: {:?}",
+                                k
+                            )
+                            .into()),
                         },
                         Err(_) => loop {
                             // encrypted age file, hopefully
@@ -452,7 +445,7 @@ fn git_clone_helper(
 ) -> Result<(), Box<dyn Error>> {
     Command::new("git")
         .args(["clone", &address])
-        .arg(&store_dir)
+        .arg(store_dir)
         .status()?
         .exit_ok()?;
     let pubkey = setup_identity(store_dir, identity)?;
@@ -505,7 +498,7 @@ fn decrypt_password(
     agefile: &Path,
     identities: &mut Vec<Box<dyn age::Identity>>,
 ) -> Result<age::stream::StreamReader<File>, Box<dyn Error>> {
-    let password_decryptor = match age::Decryptor::new(File::open(&agefile)?)? {
+    let password_decryptor = match age::Decryptor::new(File::open(agefile)?)? {
         age::Decryptor::Recipients(d) => d,
         _ => {
             return Err(format!(
@@ -525,15 +518,13 @@ fn decrypt_password(
                     age::IdentityFile::from_file(identity_file.to_str().unwrap().to_owned())?
                         .into_identities();
                 for identity in identities_native {
-                    let identity = match identity {
-                        age::IdentityFileEntry::Native(i) => i,
-                    };
+                    let age::IdentityFileEntry::Native(identity) = identity;
                     identities.push(Box::new(identity) as Box<dyn age::Identity>);
                 }
             }
             "age" => loop {
                 // passphrase age encrypted identity
-                let identity_decryptor = match age::Decryptor::new(File::open(&identity_file)?)? {
+                let identity_decryptor = match age::Decryptor::new(File::open(identity_file)?)? {
                     age::Decryptor::Passphrase(d) => d,
                     _ => return Err(format!("The identity file {} should be encrypted with a passphrase, not with recipients/identities!", identity_file.display()).into()),
                 };
@@ -561,9 +552,7 @@ fn decrypt_password(
                     age::IdentityFile::from_buffer(BufReader::new(reader))?.into_identities();
                 let mut once = true;
                 for identity in identities_native {
-                    let identity = match identity {
-                        age::IdentityFileEntry::Native(i) => i,
-                    };
+                    let age::IdentityFileEntry::Native(identity) = identity;
                     if once {
                         once = false;
                         agent_set_passphrase(
@@ -645,7 +634,7 @@ fn get_editor() -> (OsString, Vec<&'static str>) {
         let candidate = editors
             .next()
             .expect("Cannot find editor! Please set the EDITOR environment variable.");
-        if let Ok(_) = which(candidate) {
+        if which(candidate).is_ok() {
             break OsString::from(candidate);
         }
     });
@@ -800,7 +789,7 @@ fn edit(identity_file: PathBuf, store_dir: PathBuf, name: String) -> Result<(), 
     drop(tmp_dir);
 
     // git add/commit
-    if check_for_git(&canon_store_dir) {
+    if check_for_git(canon_store_dir) {
         Command::new("git")
             .arg("-C")
             .arg(canon_store_dir)
@@ -817,7 +806,7 @@ fn edit(identity_file: PathBuf, store_dir: PathBuf, name: String) -> Result<(), 
             },
             agefile
                 .with_extension("")
-                .strip_prefix(&canon_store_dir)?
+                .strip_prefix(canon_store_dir)?
                 .display(),
             editor.to_str().unwrap()
         );
@@ -839,12 +828,8 @@ where
     if slice.len() < pattern.len() {
         return None;
     }
-    for search_i in 0..(slice.len() - pattern.len()) {
-        if &slice[search_i..(search_i + pattern.len())] == pattern {
-            return Some(search_i);
-        }
-    }
-    None
+    (0..(slice.len() - pattern.len()))
+        .find(|&search_i| &slice[search_i..(search_i + pattern.len())] == pattern)
 }
 
 // returns the indices where the pattern occurs
@@ -870,7 +855,7 @@ fn show(
     name: String,
 ) -> Result<(), Box<dyn Error>> {
     fn first_line(s: &str) -> &str {
-        s.split("\n").next().unwrap()
+        s.split('\n').next().unwrap()
     }
 
     let name_dir = store_dir.join(&name);
@@ -944,7 +929,7 @@ fn show(
                     "otp" => "otpauth",
                     k => k,
                 };
-                let mut lines = output.split("\n");
+                let mut lines = output.split('\n');
                 let value = loop {
                     let line = lines.next().ok_or(format!(
                         "Cannot find key {} in password file {}.",
@@ -1047,17 +1032,17 @@ fn move_name(
     fs::rename(&old_path, &new_path)?;
 
     // git add/commit
-    if check_for_git(&canon_store_dir) {
+    if check_for_git(canon_store_dir) {
         Command::new("git")
             .arg("-C")
-            .arg(&canon_store_dir)
+            .arg(canon_store_dir)
             .args(["rm", "-r"])
             .arg(&old_path)
             .status()?
             .exit_ok()?;
         Command::new("git")
             .arg("-C")
-            .arg(&canon_store_dir)
+            .arg(canon_store_dir)
             .arg("add")
             .arg(&new_path)
             .status()?
@@ -1065,16 +1050,16 @@ fn move_name(
         let message = format!(
             "Rename {} to {}",
             canonicalise(&store_dir.join(&old_name))?
-                .strip_prefix(&canon_store_dir)?
+                .strip_prefix(canon_store_dir)?
                 .display(),
             store_dir
                 .join(&new_name)
-                .strip_prefix(&canon_store_dir)?
+                .strip_prefix(canon_store_dir)?
                 .display()
         );
         Command::new("git")
             .arg("-C")
-            .arg(&canon_store_dir)
+            .arg(canon_store_dir)
             .args(["commit", "-m", &message])
             .status()?
             .exit_ok()?;
@@ -1109,10 +1094,10 @@ fn remove(
     }
 
     // git add/commit
-    if check_for_git(&canon_store_dir) {
+    if check_for_git(canon_store_dir) {
         Command::new("git")
             .arg("-C")
-            .arg(&canon_store_dir)
+            .arg(canon_store_dir)
             .args(["rm", "-r"])
             .arg(&path)
             .status()?
@@ -1120,12 +1105,12 @@ fn remove(
         let message = format!(
             "Remove {}",
             canonicalise(&store_dir.join(&name))?
-                .strip_prefix(&canon_store_dir)?
+                .strip_prefix(canon_store_dir)?
                 .display()
         );
         Command::new("git")
             .arg("-C")
-            .arg(&canon_store_dir)
+            .arg(canon_store_dir)
             .args(["commit", "-m", &message])
             .status()?
             .exit_ok()?;
@@ -1181,15 +1166,15 @@ fn reencrypt(identity_file: &Path) -> Result<bool, Box<dyn Error>> {
         identity_file,
         &identity_file.parent().unwrap().join(".recipients"),
         &mut identities,
-        &identity_file.parent().unwrap(),
+        identity_file.parent().unwrap(),
         &mut collect,
     )?;
 
     // git add
-    if check_for_git(&identity_file.parent().unwrap()) {
+    if check_for_git(identity_file.parent().unwrap()) {
         Command::new("git")
             .arg("-C")
-            .arg(&identity_file.parent().unwrap())
+            .arg(identity_file.parent().unwrap())
             .arg("add")
             .args(collect)
             .status()?
@@ -1245,7 +1230,7 @@ fn add_recipient(
     if reencrypt(&identity_file)? {
         Command::new("git")
             .arg("-C")
-            .arg(&identity_file.parent().unwrap())
+            .arg(identity_file.parent().unwrap())
             .arg("add")
             .arg(&recipients_file)
             .status()?
@@ -1253,7 +1238,7 @@ fn add_recipient(
         let message = format!("Reencrypted store for {}", &alias);
         Command::new("git")
             .arg("-C")
-            .arg(&identity_file.parent().unwrap())
+            .arg(identity_file.parent().unwrap())
             .args(["commit", "-m", &message])
             .status()?
             .exit_ok()?;
@@ -1268,7 +1253,7 @@ fn get_canonicalised_identity_file(
     let name_path = store_dir.join(name);
     let canon_name_path = canonicalise(&name_path)?;
     let senior_dir = store_dir.parent().unwrap();
-    let canon_store = canon_name_path.strip_prefix(&senior_dir).or(Err(format!(
+    let canon_store = canon_name_path.strip_prefix(senior_dir).or(Err(format!(
         "Name {} is outside of the senior directory {}!",
         name_path.display(),
         senior_dir.display()
@@ -1308,12 +1293,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 )
                 .join(".local/share/")
             },
-            |v| PathBuf::from(v),
+            PathBuf::from,
         )
         .join("senior/");
 
     // default store for `senior clone`
-    if cli.store == None {
+    if cli.store.is_none() {
         if let CliCommand::GitClone { ref address, .. } = cli.command {
             cli.store = Some(
                 address
@@ -1442,5 +1427,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             Ok(())
         }
+        CliCommand::ChangePassphrase => Ok(()),
     }
 }
