@@ -1051,8 +1051,7 @@ fn move_name(
             canonicalise(&store_dir.join(&old_name))?
                 .strip_prefix(canon_store_dir)?
                 .display(),
-            store_dir
-                .join(&new_name)
+            canonicalise(&store_dir.join(&new_name))?
                 .strip_prefix(canon_store_dir)?
                 .display()
         );
