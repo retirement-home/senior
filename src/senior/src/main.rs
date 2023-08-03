@@ -1009,8 +1009,8 @@ fn move_name(
         old_path = store_dir.join(format!("{}.age", &old_name));
         if !old_path.is_file() {
             return Err(format!(
-                "No such file or directory: {}",
-                old_path.with_extension("[.age]").display()
+                "No such file or directory: {}[.age]",
+                old_path.display()
             )
             .into());
         }
@@ -1077,8 +1077,8 @@ fn remove(
         path = store_dir.join(format!("{}.age", &name));
         if !path.is_file() && !path.is_symlink() {
             return Err(format!(
-                "No such file or directory: {}",
-                path.with_extension("[.age]").display()
+                "No such file or directory: {}[.age]",
+                path.display()
             )
             .into());
         }
