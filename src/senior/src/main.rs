@@ -900,10 +900,17 @@ fn show(
 
         // remove the extension from the .age-files
         // this pattern is ".age\n".as_bytes() WITH the colour encoding for the terminal
-        let pattern = [46, 97, 103, 101, 27, 91, 48, 109, 10];
-        for removal_index in indices_of_pattern(&tree.stdout, &pattern).iter().rev() {
+        let pattern_colour = [46, 97, 103, 101, 27, 91, 48, 109, 10];
+        for removal_index in indices_of_pattern(&tree.stdout, &pattern_colour).iter().rev() {
             tree.stdout //                                             -1 to not remove the "\n"
-                .drain(*removal_index..(*removal_index + pattern.len() - 1));
+                .drain(*removal_index..(*removal_index + pattern_colour.len() - 1));
+        }
+        // this pattern is ".age\n".as_bytes() WITHOUT the colour encoding for the terminal
+        // some terminals/shells (?) do not have the colour encodings at the end of uncoloured files
+        let pattern_nocolour = [46, 97, 103, 101, 10];
+        for removal_index in indices_of_pattern(&tree.stdout, &pattern_nocolour).iter().rev() {
+            tree.stdout //                                             -1 to not remove the "\n"
+                .drain(*removal_index..(*removal_index + pattern_nocolour.len() - 1));
         }
 
         // remove the "\n" at the end again
