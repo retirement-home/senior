@@ -47,6 +47,7 @@ pub enum CliCommand {
     },
 
     /// Show a password
+    #[command(alias = "s")]
     Show {
         /// Show only this key;
         /// "password" shows the first line;

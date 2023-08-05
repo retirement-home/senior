@@ -93,7 +93,7 @@ _arguments "${_arguments_options[@]}" \
 ':name -- Name of the password:_senior_complete_entries' \
 && ret=0
 ;;
-(show)
+(show|s)
 _arguments "${_arguments_options[@]}" \
 '-k[Show only this key; "password" shows the first line; "otp" generates the one-time password]:otp|login|email|...: ' \
 '--key=[Show only this key; "password" shows the first line; "otp" generates the one-time password]:otp|login|email|...: ' \

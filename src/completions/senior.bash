@@ -105,7 +105,7 @@ _senior() {
             senior,rm)
                 cmd="senior__rm"
                 ;;
-            senior,show)
+            "senior,show"|"senior,s")
                 cmd="senior__show"
                 ;;
             senior__help,add-recipient)
