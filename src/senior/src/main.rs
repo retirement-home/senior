@@ -38,19 +38,33 @@ enum DisplayServer {
     Wayland,
     X11,
     Termux,
+    Wsl,
     Windows,
 }
 
 fn get_display_server() -> DisplayServer {
+    // WSL
+    let wsl_file = Path::new("/proc/version");
+    if wsl_file.is_file() {
+        if let Ok(proc_version) = fs::read_to_string(wsl_file) {
+            if proc_version.to_lowercase().contains("microsoft") {
+                return DisplayServer::Wsl;
+            }
+        }
+    }
+    // Wayland
     if env::var_os("WAYLAND_DISPLAY").is_some() {
         return DisplayServer::Wayland;
+    // X11
     } else if env::var_os("DISPLAY").is_some() {
         return DisplayServer::X11;
+    // Termux
     } else if let Some(v) = env::var_os("PREFIX") {
         if v.into_string().unwrap().contains("termux") {
             return DisplayServer::Termux;
         }
     }
+    // Default: Windows
     DisplayServer::Windows
 }
 
@@ -901,14 +915,20 @@ fn show(
         // remove the extension from the .age-files
         // this pattern is ".age\n".as_bytes() WITH the colour encoding for the terminal
         let pattern_colour = [46, 97, 103, 101, 27, 91, 48, 109, 10];
-        for removal_index in indices_of_pattern(&tree.stdout, &pattern_colour).iter().rev() {
+        for removal_index in indices_of_pattern(&tree.stdout, &pattern_colour)
+            .iter()
+            .rev()
+        {
             tree.stdout //                                             -1 to not remove the "\n"
                 .drain(*removal_index..(*removal_index + pattern_colour.len() - 1));
         }
         // this pattern is ".age\n".as_bytes() WITHOUT the colour encoding for the terminal
         // some terminals/shells (?) do not have the colour encodings at the end of uncoloured files
         let pattern_nocolour = [46, 97, 103, 101, 10];
-        for removal_index in indices_of_pattern(&tree.stdout, &pattern_nocolour).iter().rev() {
+        for removal_index in indices_of_pattern(&tree.stdout, &pattern_nocolour)
+            .iter()
+            .rev()
+        {
             tree.stdout //                                             -1 to not remove the "\n"
                 .drain(*removal_index..(*removal_index + pattern_nocolour.len() - 1));
         }
@@ -993,9 +1013,18 @@ fn show(
                         .exit_ok()?;
                 }
             }
+            DisplayServer::Wsl => {
+                if which::which("clip.exe").is_err() {
+                    return Err("I think we are in WSL, but I cannot find clip.exe!".into());
+                } else {
+                    let child = Command::new("clip.exe").stdin(Stdio::piped()).spawn()?;
+                    let mut stdin_writer = child.stdin.unwrap();
+                    stdin_writer.write_all(to_clip.as_bytes())?;
+                }
+            }
             _ => {
                 return Err(
-                    "Clipboard only implemented for Wayland (wl-copy), X11 (xclip) and Termux (termux-clipboard-set) yet!".into(),
+                    "Clipboard only implemented for Wayland (wl-copy), X11 (xclip), Termux (termux-clipboard-set) and WSL (clip.exe) yet!".into(),
                 )
             }
         }
@@ -1015,11 +1044,7 @@ fn move_name(
     if !old_path.is_dir() {
         old_path = store_dir.join(format!("{}.age", &old_name));
         if !old_path.is_file() {
-            return Err(format!(
-                "No such file or directory: {}[.age]",
-                old_path.display()
-            )
-            .into());
+            return Err(format!("No such file or directory: {}[.age]", old_path.display()).into());
         }
         new_path = store_dir.join(format!("{}.age", &new_name));
     }
@@ -1083,11 +1108,7 @@ fn remove(
     if !path.is_dir() {
         path = store_dir.join(format!("{}.age", &name));
         if !path.is_file() && !path.is_symlink() {
-            return Err(format!(
-                "No such file or directory: {}[.age]",
-                path.display()
-            )
-            .into());
+            return Err(format!("No such file or directory: {}[.age]", path.display()).into());
         }
         println!("Removing {}", path.display());
         fs::remove_file(&path)?;
