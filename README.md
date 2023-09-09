@@ -12,7 +12,7 @@ A Password Manager Using [age](https://github.com/FiloSottile/age) for Encryptio
 
 ## Features
 It is inspired by [pass](https://git.zx2c4.com/password-store/).
-Senior's features are:
+senior's features are
 - Multiple stores
 - OTP support
 - Clipboard support
@@ -22,14 +22,20 @@ Senior's features are:
 - Passphrases only need to be entered once per session and then get cached by `senior-agent`
 - A store can be shared among a group (encryption for multiple recipients)
 - Symlinks between stores are supported
+- No config files
+- Supported environments: [Linux](https://kernel.org/) ([Wayland](https://wayland.freedesktop.org/) and [X11](https://www.x.org/wiki/)), [Termux](https://termux.dev/en/), [WSL](https://learn.microsoft.com/en-us/windows/wsl/about), [Darwin](https://opensource.apple.com/) ([macOS](https://www.apple.com/macos/))
+
+To do:
+- man page
+- Android app
 
 ## Usage
-### Creating a New Store
+### Create a New Store
 ```sh
 senior init
 # optionally initalise for git use:
 senior git init
-senior git add \*
+senior git add '*'
 senior git commit -m "init"
 ```
 The default store name is `main`. You can use `senior -s <NAME> <command>` to use another name.
@@ -38,8 +44,8 @@ The default store name is `main`. You can use `senior -s <NAME> <command>` to us
 ```sh
 senior clone git@gitlab.com:exampleuser/mystore.git
 ```
-Without specifing another store name (using `-s`), the default name will be `mystore` in this example.
-Someone who already has access to the store can then add you to the recipients:
+Without specifying another store name (using `-s`), the default name will be `mystore` in this example.
+Someone who already has access to the store can then add you to the recipients via
 ```sh
 senior add-recipient "<PUBLIC KEY>" "<ALIAS>"
 ```
@@ -47,9 +53,9 @@ senior add-recipient "<PUBLIC KEY>" "<ALIAS>"
 ### Use an Existing Identity
 Both `senior create` and `senior clone` support the optional flag `-i <FILE>` or `--identity <FILE>`
 to use an existing identity instead of generating a new one.
-Supported are:
-- cleartext age identity
-- passphrase encrypted age identity
+Supported are
+- Cleartext age identity
+- Passphrase encrypted age identity
 - ssh key of type ed25519 or rsa
 
 ### Edit/Show/Move/Remove a Password
@@ -60,7 +66,7 @@ senior mv example.com example2.com
 senior rm example2.com
 ```
 `senior show` has the option `-k` or `--key` to only print the value of a `key: value` pair.
-The special key `otp` creates the one-time password from the otpauth-string:
+The special key `otp` creates the one-time password from the otpauth-string.
 ```sh
 $ senior show example.com
 mysecretpassword
@@ -105,30 +111,32 @@ $ senior -s work show
 ├── server1
 └── workstation
 ```
-Notice the symlink `main/friends -> ../friends`. This makes these two commands equivalent:
+Notice the symlink `main/friends -> ../friends`. This makes the two commands
 ```sh
 $ senior -s friends show example.com
 $ senior show friends/example.com
 ```
-senior recognises that `main/friends/example.com` actually is at `friends/example.com` and therefore uses
+equivalent.
+senior recognises that `main/friends/example.com` is actually at `friends/example.com` and therefore uses
 `friends/.identity.age` to decrypt.
 Same goes for `senior edit` and using `friends/.recipients/*` to encrypt.
-This is very practical for `seniormenu`, as it only looks inside the main store.
+This is very practical for [seniormenu](#seniormenu), as it only looks inside the default store.
+
+If only one store exists then this is the default store. Otherwise `main` is the default store.
 
 ### seniormenu
-Usage:
 ```
 seniormenu [--menu <dmenu-wl>] [--dotool <ydotool>] [--type] [<key1> <key2> ...]
 ```
 seniormenu uses `dmenu-wl` or `dmenu` (can be changed with `--menu <othermenu>`) to let you select a password for the clipboard.
 You can provide a `<key>` to get another value from the password file (like login, email, ...).
 
-With `--type` the password gets typed using `ydotool` (for Wayland) / `xdotool` (for X11). The default can be changed with `--dotool <otherdotool>`.
+With `--type` the password gets typed using [ydotool](https://github.com/ReimuNotMoe/ydotool) (for Wayland) / [xdotool](https://github.com/jordansissel/xdotool) (for X11). The default can be changed with `--dotool <otherdotool>`.
 
 ydotool feature only: You can specify multiple keys. Inbetween keys, a TAB is typed. After typing the password or the otp, the ENTER key gets pressed.
 
 Set up some keybindings in your window manager to quickly clip/type passwords.
-An example for sway/i3 is:
+An example for sway/i3 is
 ```
 bindsym $mod+u exec seniormenu --menu bemenu --type
 bindsym $mod+y exec seniormenu --menu bemenu --type otp
@@ -136,9 +144,9 @@ bindsym $mod+t exec seniormenu --menu bemenu --type login password
 ```
 
 ### senior-agent
-If you have set a passphrase to protect your identity, then running
+If you have set a passphrase to protect your identity file, then running
 `age -d -i .identity.age example.com.age`
-requires you to enter the passphrase each time.
+would require you to enter the passphrase each time.
 Because this is very cumbersome, senior provides an agent.
 
 Upon receiving your passphrase once,
@@ -164,7 +172,7 @@ sudo make install
 # uninstalling:
 sudo make uninstall
 ```
-Make sure you have the dependencies installed (look at `depends` and `makedepends` in the [PKGBUILD](PKGBUILD))
+Make sure you have the dependencies installed (look at `depends` and `makedepends` in the [PKGBUILD](PKGBUILD)).
 
 ## How It Works
 Your store is just a directory, usually `~/.local/share/senior/main/`. Run `senior print-dir` to find out.

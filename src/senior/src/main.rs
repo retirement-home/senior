@@ -39,6 +39,7 @@ enum DisplayServer {
     X11,
     Termux,
     Wsl,
+    Darwin, // macOS
     Windows,
 }
 
@@ -58,6 +59,18 @@ fn get_display_server() -> DisplayServer {
     // X11
     } else if env::var_os("DISPLAY").is_some() {
         return DisplayServer::X11;
+    // Darwin
+    } else if which::which("uname").is_ok()
+        && std::str::from_utf8(
+            &Command::new("uname")
+                .output()
+                .expect("Could not run `uname`!")
+                .stdout,
+        )
+        .expect("Could not convert output of `uname` to UTF8!")
+            == "Darwin"
+    {
+        return DisplayServer::Darwin;
     // Termux
     } else if let Some(v) = env::var_os("PREFIX") {
         if v.into_string().unwrap().contains("termux") {
@@ -1022,6 +1035,15 @@ fn show(
                     stdin_writer.write_all(to_clip.as_bytes())?;
                 }
             }
+            DisplayServer::Darwin => {
+                if which::which("pbcopy").is_err() {
+                    return Err("I think we are on Darwin (macOS), but I cannot find pbcopy!".into());
+                } else {
+                    let child = Command::new("pbcopy").stdin(Stdio::piped()).spawn()?;
+                    let mut stdin_writer = child.stdin.unwrap();
+                    stdin_writer.write_all(to_clip.as_bytes())?;
+                }
+            }
             _ => {
                 return Err(
                     "Clipboard only implemented for Wayland (wl-copy), X11 (xclip), Termux (termux-clipboard-set) and WSL (clip.exe) yet!".into(),
@@ -1516,15 +1538,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                 get_canonicalised_identity_file(&store_dir, old_name)?;
             let new_canonicalised_identity_file =
                 get_canonicalised_identity_file(&store_dir, new_name)?;
-            match old_canonicalised_identity_file == new_canonicalised_identity_file {
-                false => {
-                    return Err(format!(
-                        "{} and {} are not part of the same store!",
-                        old_name, new_name
-                    )
-                    .into())
-                }
-                true => old_canonicalised_identity_file,
+            if old_canonicalised_identity_file == new_canonicalised_identity_file {
+                old_canonicalised_identity_file
+            } else {
+                return Err(format!(
+                    "{} and {} are not part of the same store!",
+                    old_name, new_name
+                )
+                .into());
             }
         }
         CliCommand::AddRecipient { .. } | CliCommand::Reencrypt | CliCommand::ChangePassphrase => {
