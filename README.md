@@ -119,10 +119,10 @@ $ senior show friends/example.com
 equivalent.
 senior recognises that `main/friends/example.com` is actually at `friends/example.com` and therefore uses
 `friends/.identity.age` to decrypt.
-Same goes for `senior edit` and using `friends/.recipients/*` to encrypt.
+The same goes for `senior edit` and using `friends/.recipients/*` to encrypt.
 This is very practical for [seniormenu](#seniormenu), as it only looks inside the default store.
 
-If only one store exists then this is the default store. Otherwise `main` is the default store.
+If only one store exists then this is the default store. Otherwise, `main` is the default store.
 
 ### seniormenu
 ```
