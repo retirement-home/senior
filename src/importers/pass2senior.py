@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
-import tempfile
 import subprocess
-import shutil
 
 def find_age_backend():
     known_backends = ["rage", "age"]
@@ -16,44 +14,23 @@ def find_age_backend():
 def main():
     src_dir = None
     target_dir = None
-    identity = None
-    public_key = None
 
-    arg_iter = iter(sys.argv[1:])
-    while (arg := next(arg_iter, None)) is not None:
-        if arg == "-i":
-            identity = next(arg_iter, None)
-            continue
-        if src_dir is None:
-            src_dir = arg
-        else:
-            target_dir = arg
-
-    if "-h" in sys.argv[1:] or "--help" in sys.argv[1:] or (src_dir is None) or (target_dir is None):
-        print("Usage: {} [-i identity_file] <src_dir> <target_dir>".format(sys.argv[0]))
+    if "-h" in sys.argv[1:] or "--help" in sys.argv[1:] or len(sys.argv[1:]) != 2:
+        print("Usage: {} <src_dir> <target_dir>".format(sys.argv[0]))
         sys.exit()
 
+    src_dir = sys.argv[1]
+    target_dir = sys.argv[2]
+    if os.path.exists(target_dir):
+        raise Exception("{} exists already!".format(target_dir))
+
     age = find_age_backend()
-    tmpdir = tempfile.TemporaryDirectory(suffix="pass2senior")
-    if identity is None:
-        identity = os.path.join(tmpdir.name, "identity.txt")
-        s = subprocess.run(["{}-keygen".format(age), "-o", identity], capture_output=True, text=True)
-        public_key = s.stderr.strip()[len("Public key: "):]
-    else:
-        with open(identity, "r") as f:
-            for line in f.read().strip().split("\n"):
-                if "public key:" in line.lower():
-                    public_key = line[len("# public key: "):]
-                    break
-                elif "openssh" in line.lower():
-                    public_key = subprocess.run(["ssh-keygen", "-y", "-f", identity], capture_output=True, text=True).stdout.strip()
-                    break
 
     recipients_dir = os.path.join(target_dir, ".recipients")
     os.makedirs(recipients_dir, exist_ok=True)
-    target_identity = os.path.join(target_dir, ".identity.txt")
-    shutil.copyfile(identity, os.path.join(target_dir, ".identity.txt"))
-    tmpdir.cleanup()
+    identity = os.path.join(target_dir, ".identity.txt")
+    s = subprocess.run(["{}-keygen".format(age), "-o", identity], capture_output=True, text=True)
+    public_key = s.stderr.strip()[len("Public key: "):]
     recipients_main = os.path.join(recipients_dir, "main.txt")
     with open(recipients_main, "w") as f:
         f.write("# {}\n".format(os.environ["USER"]))
@@ -63,22 +40,30 @@ def main():
 
     def copy_and_encrypt(dir_path):
         for filename in os.listdir(dir_path):
-            if filename.startswith("."):
-                continue
             filepath = os.path.join(dir_path, filename)
             if os.path.isdir(filepath):
+                if filename == ".git":
+                    print("Skipping {}".format(filepath), file=sys.stderr)
+                    continue
                 copy_and_encrypt(filepath)
+                continue
+            if not str(filename).endswith(".gpg"):
+                print("Skipping {}".format(filepath), file=sys.stderr)
                 continue
             target_parent = os.path.join(target_dir, dir_path[len(src_dir) + 1:])
             os.makedirs(target_parent, exist_ok=True)
             target_path = os.path.join(target_parent, filename[:-4] + ".age")
             print("gpg --decrypt {} | {} -e -R {} -o {}".format(filepath, age, recipients_main, target_path))
-            gpg_decrypt = subprocess.Popen(["gpg", "--decrypt", filepath], stdout=subprocess.PIPE)
+            gpg_decrypt = subprocess.Popen(["gpg", "--decrypt", filepath], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             age_encrypt = subprocess.run([age, "-e", "-R", recipients_main, "-o", target_path], stdin=gpg_decrypt.stdout)
+            gpg_decrypt.wait()
+            if gpg_decrypt.returncode not in [0, 1]:
+                raise Exception("Bad return code for gpg:\n{}".format(gpg_decrypt.stderr.read() if gpg_decrypt.stderr is not None else ""))
             if age_encrypt.returncode != 0:
-                raise Exception("Non-zero return code: {}".format(age_encrypt.stderr))
+                raise Exception("Non-zero return code for age!")
 
     copy_and_encrypt(src_dir)
+    print("Done importing. Use `senior change-passphrase` to set a passphrase.")
 
 if __name__ == "__main__":
     main()

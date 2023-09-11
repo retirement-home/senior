@@ -8,6 +8,7 @@ A Password Manager Using [age](https://github.com/FiloSottile/age) for Encryptio
 - [Features](#features)
 - [Usage](#usage)
 - [Install](#install)
+- [Import from pass](#import-from-pass)
 - [How It Works](#how-it-works)
 
 ## Features
@@ -173,6 +174,14 @@ sudo make install
 sudo make uninstall
 ```
 Make sure you have the dependencies installed (look at `depends` and `makedepends` in the [PKGBUILD](PKGBUILD)).
+
+## Import from pass
+Use the script [pass2senior.py](src/importers/pass2senior.py) to import your passwords.
+```sh
+./pass2senior.py ~/.pass "$(senior print-dir)"
+# set a passphrase
+senior change-passphrase
+```
 
 ## How It Works
 Your store is just a directory, usually `~/.local/share/senior/main/`. Run `senior print-dir` to find out.
