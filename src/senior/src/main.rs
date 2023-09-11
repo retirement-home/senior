@@ -1,6 +1,5 @@
 // #![feature(exit_status_error)]
 #![allow(unstable_name_collisions)]
-#![feature(io_error_more)]
 
 pub mod cli;
 
@@ -1080,7 +1079,7 @@ fn removedirs(path: &Path) -> io::Result<()> {
                     break;
                 }
             }
-            Err(err) if err.kind() == io::ErrorKind::DirectoryNotEmpty => break,
+            Err(err) if err.raw_os_error() == Some(39) => break,
             Err(err) => return Err(err),
         }
     }
