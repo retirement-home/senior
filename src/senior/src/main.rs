@@ -1076,7 +1076,11 @@ fn move_name(
     if !old_path.is_dir() {
         old_path = store_dir.join(format!("{}.age", &old_name));
         if !old_path.is_file() {
-            return Err(format!("No such file or directory: {}[.age]", old_path.display()).into());
+            return Err(format!(
+                "No such file or directory: {}[.age]",
+                old_path.with_extension("").display()
+            )
+            .into());
         }
         new_path = store_dir.join(format!("{}.age", &new_name));
     }
@@ -1140,7 +1144,11 @@ fn remove(
     if !path.is_dir() {
         path = store_dir.join(format!("{}.age", &name));
         if !path.is_file() && !path.is_symlink() {
-            return Err(format!("No such file or directory: {}[.age]", path.display()).into());
+            return Err(format!(
+                "No such file or directory: {}[.age]",
+                path.with_extension("").display()
+            )
+            .into());
         }
         println!("Removing {}", path.display());
         fs::remove_file(&path)?;
