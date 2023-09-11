@@ -775,11 +775,9 @@ fn tempdir() -> std::io::Result<TempDir> {
 // decrypt via identity_file
 // encrypt via identity_file.parent()/.recipients/
 fn edit(identity_file: PathBuf, store_dir: PathBuf, name: String) -> Result<(), Box<dyn Error>> {
-    let agefile = canonicalise(&store_dir.join(&name).with_extension("age"))?;
     let canon_store_dir = identity_file.parent().unwrap();
-    if !agefile.parent().unwrap().starts_with(canon_store_dir) {
-        return Err("Provide a valid file name!".into());
-    }
+    let agefile = canonicalise(&store_dir.join(format!("{}.age", name)))?;
+
     let tmp_dir = tempdir()?;
     let tmpfile_txt = tmp_dir
         .path()
