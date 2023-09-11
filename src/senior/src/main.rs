@@ -761,12 +761,22 @@ fn check_for_git(canon_store_dir: &Path) -> bool {
     )
 }
 
+// use /dev/shm/ if available
+fn tempdir() -> std::io::Result<TempDir> {
+    let shm = Path::new("/dev/shm/");
+    if shm.is_dir() {
+        TempDir::new_in(shm, "senior")
+    } else {
+        TempDir::new("senior")
+    }
+}
+
 // edit store_dir/name.age
 // decrypt via identity_file
 // encrypt via identity_file.parent()/.recipients/
 fn edit(identity_file: PathBuf, store_dir: PathBuf, name: String) -> Result<(), Box<dyn Error>> {
     let agefile = canonicalise(&store_dir.join(format!("{}.age", &name)))?;
-    let tmp_dir = TempDir::new("senior")?;
+    let tmp_dir = tempdir()?;
     let tmpfile_txt = tmp_dir
         .path()
         .join(agefile.file_name().unwrap())
@@ -1347,7 +1357,7 @@ fn change_passphrase(identity_file: PathBuf) -> Result<(), Box<dyn Error>> {
                 File::create(new_identity_file)?.write_all(&keyfile_content)?;
                 fs::remove_file(&identity_file)?;
             } else {
-                let tmp_dir = TempDir::new("senior")?;
+                let tmp_dir = tempdir()?;
                 let tmp_identity_file = tmp_dir.path().join(new_identity_filename);
                 let encryptor = age::Encryptor::with_user_passphrase(Secret::new(passphrase));
                 let mut write_to = encryptor.wrap_output(File::create(&tmp_identity_file)?)?;
