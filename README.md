@@ -166,12 +166,18 @@ makepkg -sic
 
 ### Other Systems
 ```sh
-# installing:
-make build
-sudo make install
+# build
+make
 
-# uninstalling:
+# install on Linux
+sudo make install
+# install in Termux
+make install
+
+# uninstall from Linux
 sudo make uninstall
+# uninstall from Termux
+make uninstall
 ```
 Make sure you have the dependencies installed (look at `depends` and `makedepends` in the [PKGBUILD](PKGBUILD)).
 
