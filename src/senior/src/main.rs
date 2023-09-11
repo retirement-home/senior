@@ -1,5 +1,6 @@
 // #![feature(exit_status_error)]
 #![allow(unstable_name_collisions)]
+#![feature(io_error_more)]
 
 pub mod cli;
 
@@ -775,13 +776,16 @@ fn tempdir() -> std::io::Result<TempDir> {
 // decrypt via identity_file
 // encrypt via identity_file.parent()/.recipients/
 fn edit(identity_file: PathBuf, store_dir: PathBuf, name: String) -> Result<(), Box<dyn Error>> {
-    let agefile = canonicalise(&store_dir.join(format!("{}.age", &name)))?;
+    let agefile = canonicalise(&store_dir.join(&name).with_extension("age"))?;
+    let canon_store_dir = identity_file.parent().unwrap();
+    if !agefile.parent().unwrap().starts_with(canon_store_dir) {
+        return Err("Provide a valid file name!".into());
+    }
     let tmp_dir = tempdir()?;
     let tmpfile_txt = tmp_dir
         .path()
         .join(agefile.file_name().unwrap())
         .with_extension("txt");
-    let canon_store_dir = identity_file.parent().unwrap();
 
     // decrypt if it exists
     let old_content = if agefile.is_file() {
@@ -1064,25 +1068,54 @@ fn show(
     Ok(())
 }
 
+// also removes parent directories until an error is raised
+fn removedirs(path: &Path) -> io::Result<()> {
+    let mut path_buf = path.to_path_buf();
+    while path_buf.is_dir() {
+        match fs::remove_dir(&path_buf) {
+            Ok(()) => {
+                if let Some(parent) = path_buf.parent() {
+                    path_buf = parent.to_path_buf();
+                } else {
+                    break;
+                }
+            }
+            Err(err) if err.kind() == io::ErrorKind::DirectoryNotEmpty => break,
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(())
+}
+
 fn move_name(
     identity_file: PathBuf,
     store_dir: PathBuf,
-    old_name: String,
-    new_name: String,
+    mut old_name: String,
+    mut new_name: String,
 ) -> Result<(), Box<dyn Error>> {
     let canon_store_dir = identity_file.parent().unwrap();
     let mut old_path = store_dir.join(&old_name);
     let mut new_path = store_dir.join(&new_name);
-    if !old_path.is_dir() {
-        old_path = store_dir.join(format!("{}.age", &old_name));
-        if !old_path.is_file() {
-            return Err(format!(
-                "No such file or directory: {}[.age]",
-                old_path.with_extension("").display()
-            )
-            .into());
-        }
-        new_path = store_dir.join(format!("{}.age", &new_name));
+    let old_path_file = old_path.with_extension("age");
+    if old_name.pop() != Some('/') && old_path_file.is_file() {
+        old_path = old_path_file;
+    } else if !old_path.is_dir() {
+        return Err(format!("No such file or directory: {}[.age]", old_path.display()).into());
+    } else if old_path.canonicalize()? == canon_store_dir {
+        return Err(format!("Source {} must not be the whole store!", old_path.display()).into());
+    }
+
+    if new_name.pop() == Some('/') || new_path.is_dir() {
+        new_path = new_path.join(old_path.file_name().unwrap());
+    }
+
+    if old_path == new_path {
+        return Err(format!(
+            "Source {} and destination {} are identical!",
+            old_path.display(),
+            new_path.display()
+        )
+        .into());
     }
 
     let new_path_parent = new_path.parent().unwrap();
@@ -1097,6 +1130,7 @@ fn move_name(
     }
 
     fs::rename(&old_path, &new_path)?;
+    removedirs(old_path.parent().unwrap())?;
 
     // git add/commit
     if check_for_git(canon_store_dir) {
@@ -1137,27 +1171,27 @@ fn remove(
     identity_file: PathBuf,
     store_dir: PathBuf,
     recursive: bool,
-    name: String,
+    mut name: String,
 ) -> Result<(), Box<dyn Error>> {
     let canon_store_dir = identity_file.parent().unwrap();
     let mut path = store_dir.join(&name);
-    if !path.is_dir() {
-        path = store_dir.join(format!("{}.age", &name));
-        if !path.is_file() && !path.is_symlink() {
-            return Err(format!(
-                "No such file or directory: {}[.age]",
-                path.with_extension("").display()
-            )
-            .into());
-        }
+    let path_file = path.with_extension("age");
+    if name.pop() != Some('/') && path_file.is_file() {
+        path = path_file;
         println!("Removing {}", path.display());
         fs::remove_file(&path)?;
+    } else if !path.is_dir() {
+        return Err(format!("No such file or directory: {}[.age]", path.display()).into());
+    } else if path.canonicalize()? == canon_store_dir {
+        return Err(format!("Target {} must not be the whole store!", path.display()).into());
     } else if recursive {
         println!("Removing {}", path.display());
         fs::remove_dir_all(&path)?;
     } else {
         return Err("Use -r for directories".into());
     }
+
+    removedirs(path.parent().unwrap())?;
 
     // git add/commit
     if check_for_git(canon_store_dir) {
@@ -1443,12 +1477,12 @@ fn get_canonicalised_identity_file(
     let canon_name_path = canonicalise(&name_path)?;
     let senior_dir = store_dir.parent().unwrap();
     let canon_store = canon_name_path.strip_prefix(senior_dir).or(Err(format!(
-        "Name {} is outside of the senior directory {}!",
+        "Path {} is outside of the senior directory {}!",
         name_path.display(),
         senior_dir.display()
     )))?;
     let canon_store = canon_store.iter().next().ok_or(format!(
-        "Name {} is the senior directory {}.",
+        "Path {} is the senior directory {}!",
         name_path.display(),
         senior_dir.display()
     ))?;
