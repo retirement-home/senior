@@ -172,12 +172,11 @@ fn prompt_password(prompt: &str) -> Result<String, Box<dyn Error>> {
     } else {
         // People are used to pass and gnupg; Get their preferred pinentry program from their
         // gpg-agent.conf
-        let gnupg_dir = PathBuf::from(
-            env::var_os("GNUPGHOME")
-                .unwrap_or(env::var_os("HOME").ok_or("Cannot get home directory")?),
-        );
+        let gnupg_dir =
+            env::var_os("GNUPGHOME").map_or_else(|| home().join(".gnupg"), PathBuf::from);
         let gpgagent_file = gnupg_dir.join("gpg-agent.conf");
-        let pinentry_program = if gpgagent_file.canonicalize()?.is_file() {
+        let pinentry_program = if gpgagent_file.exists() && gpgagent_file.canonicalize()?.is_file()
+        {
             let gpgagent_conf = BufReader::new(File::open(gpgagent_file)?);
             gpgagent_conf
                 .lines()
@@ -187,7 +186,9 @@ fn prompt_password(prompt: &str) -> Result<String, Box<dyn Error>> {
                         .starts_with("pinentry-program")
                 })
                 .map_or("pinentry".to_owned(), |l| {
-                    l.expect("Cannot read line")["pinentry-program ".len()..].to_owned()
+                    l.expect("Cannot read line")["pinentry-program".len()..]
+                        .trim()
+                        .to_owned()
                 })
         } else {
             "pinentry".to_owned()
@@ -1502,19 +1503,17 @@ fn get_canonicalised_identity_file(
     }
 }
 
+fn home() -> PathBuf {
+    PathBuf::from(env::var_os("HOME").unwrap_or_else(|| {
+        env::var_os("USERPROFILE").expect("Cannot get the users home directory!")
+    }))
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let mut cli = Cli::parse();
 
     let senior_dir = env::var_os("XDG_DATA_HOME")
-        .map_or_else(
-            || {
-                PathBuf::from(
-                    env::var_os("HOME").unwrap_or_else(|| env::var_os("USERPROFILE").unwrap()),
-                )
-                .join(".local/share/")
-            },
-            PathBuf::from,
-        )
+        .map_or_else(|| home().join(".local/share/"), PathBuf::from)
         .join("senior/");
 
     // default store for `senior clone`
