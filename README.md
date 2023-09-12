@@ -34,7 +34,7 @@ To do:
 ### Create a New Store
 ```sh
 senior init
-# optionally initalise for git use:
+# optionally initialise for git use:
 senior git init
 senior git add '*'
 senior git commit -m "init"
@@ -98,14 +98,16 @@ friends  main  work
 # the default store is `main`
 $ senior show
 /home/bob/.local/share/senior/main
-├── example.com
+├── gitlab.com
 ├── friends -> ../friends
 │   ├── amazon.com
+│   ├── example.com
 │   └── netflix.com
 └── gitlab.com
 $ senior -s friends show
 /home/bob/.local/share/senior/friends
 ├── amazon.com
+├── example.com
 └── netflix.com
 $ senior -s work show
 /home/bob/.local/share/senior/work
@@ -156,7 +158,7 @@ This way you only have to enter your passphrase once per session.
 
 ## Install
 ### Arch BASED Systems
-Simply use the provided [PKGBUILD](PKGBUILD)
+Simply use the provided [PKGBUILD](PKGBUILD).
 ```sh
 # Download the PKGBUILD into an empty directory
 curl -O "https://gitlab.com/retirement-home/senior/-/raw/main/PKGBUILD"
@@ -169,16 +171,13 @@ makepkg -sic
 # build
 make
 
-# install on Linux
+# install
 sudo make install
-# install in Termux
-make install
 
-# uninstall from Linux
+# uninstall
 sudo make uninstall
-# uninstall from Termux
-make uninstall
 ```
+On Termux you should omit the `sudo`.
 Make sure you have the dependencies installed (look at `depends` and `makedepends` in the [PKGBUILD](PKGBUILD)).
 
 ## Import from pass
