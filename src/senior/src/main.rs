@@ -620,7 +620,7 @@ fn decrypt_password(
                     ssh::Identity::Unencrypted(k) => k,
                     ssh::Identity::Unsupported(k) => {
                         return Err(format!(
-                            "The ssh identity key type of {} is not supported by age: {:?}",
+                            "The ssh identity key type of {} is not supported by age! {:?}",
                             identity_file.display(),
                             k
                         )
@@ -692,7 +692,7 @@ fn get_recipients_recursive(
                         Ok(r) => recipients.push(Box::new(r) as Box<dyn age::Recipient + Send>),
                         Err(e) => {
                             return Err(format!(
-                                "Could not process ssh recipient in {}:{}\n{:?}",
+                                "Could not process ssh recipient in {}:{}!\n{:?}",
                                 child.display(),
                                 i + 1,
                                 e
@@ -705,7 +705,7 @@ fn get_recipients_recursive(
                         Ok(r) => recipients.push(Box::new(r) as Box<dyn age::Recipient + Send>),
                         Err(e) => {
                             return Err(format!(
-                                "Could not process age recipient in {}:{}\n{:?}",
+                                "Could not process age recipient in {}:{}!\n{:?}",
                                 child.display(),
                                 i + 1,
                                 e
@@ -717,7 +717,7 @@ fn get_recipients_recursive(
             }
         } else {
             panic!(
-                "{} unsupported file type: {:?}",
+                "{} unsupported file type!\n{:?}",
                 child.display(),
                 child.metadata()?.file_type()
             );
@@ -903,7 +903,7 @@ fn show(
     if !agefile.exists() {
         // maybe it is just a directory
         if !name_dir.exists() || !name_dir.canonicalize()?.is_dir() {
-            return Err(format!("The password {} does not exist.", agefile.display()).into());
+            return Err(format!("The password {} does not exist!", agefile.display()).into());
         }
 
         // print the directory tree
@@ -983,7 +983,7 @@ fn show(
                 let mut lines = output.split('\n');
                 let value = loop {
                     let line = lines.next().ok_or(format!(
-                        "Cannot find key {} in password file {}.",
+                        "Cannot find key \"{}\" in password file {}!",
                         key,
                         agefile.display()
                     ))?;
@@ -1434,7 +1434,7 @@ fn change_passphrase(identity_file: PathBuf) -> Result<(), Box<dyn Error>> {
                 ssh::Identity::Unencrypted(_) => String::from(""),
                 ssh::Identity::Unsupported(k) => {
                     return Err(format!(
-                        "The ssh identity key type of {} is not supported by age: {:?}",
+                        "The ssh identity key type of {} is not supported by age! {:?}",
                         identity_file.display(),
                         k
                     )
@@ -1499,7 +1499,7 @@ fn get_canonicalised_identity_file(
     .iter();
     loop {
         let candidate = canon_store.join(identity_filenames.next().ok_or(format!(
-            "Could not find any identity file in store {}.",
+            "Cannot not find any identity file in store {}!",
             canon_store.display()
         ))?);
         if candidate.is_file() || candidate.is_symlink() {
@@ -1560,7 +1560,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         CliCommand::Init { .. } | CliCommand::GitClone { .. } => {
             if store_dir.exists() {
                 return Err(format!(
-                    "Store {} exists already. Use `-s` to specify another store.",
+                    "Store {} exists already! Use `-s` to specify another store.",
                     store_dir.display()
                 )
                 .into());
@@ -1570,7 +1570,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         _ => {
             if !store_dir.exists() {
                 return Err(format!(
-                    "Store {} does not exist. Use `-s` to specify another store.",
+                    "Store {} does not exist! Use `-s` to specify another store.",
                     store_dir.display()
                 )
                 .into());
