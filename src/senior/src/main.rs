@@ -515,9 +515,9 @@ fn canonicalise(path: &Path) -> std::io::Result<PathBuf> {
     if path.exists() {
         path.canonicalize()
     } else {
-        let filename = path.file_name().unwrap();
-        let parent = canonicalise(path.parent().unwrap())?;
-        Ok(parent.join(filename))
+        let parent = path.parent().unwrap();
+        let filename = path.file_name().unwrap_or(OsStr::new(".."));
+        Ok(canonicalise(parent)?.join(filename))
     }
 }
 
@@ -1058,7 +1058,7 @@ fn show(
             }
             _ => {
                 return Err(
-                    "Clipboard only implemented for Wayland (wl-copy), X11 (xclip), Termux (termux-clipboard-set) and WSL (clip.exe) yet!".into(),
+                    "Clipboard only implemented for Wayland (wl-copy), X11 (xclip), Termux (termux-clipboard-set), WSL (clip.exe), and Darwin (pbcopy) yet!".into(),
                 )
             }
         }
@@ -1088,14 +1088,19 @@ fn removedirs(path: &Path) -> io::Result<()> {
 fn move_name(
     identity_file: PathBuf,
     store_dir: PathBuf,
-    mut old_name: String,
-    mut new_name: String,
+    old_name: String,
+    new_name: String,
 ) -> Result<(), Box<dyn Error>> {
     let canon_store_dir = identity_file.parent().unwrap();
     let mut old_path = store_dir.join(&old_name);
     let mut new_path = store_dir.join(&new_name);
-    let old_path_file = old_path.with_extension("age");
-    if old_name.pop() != Some('/') && old_path_file.is_file() {
+    let old_path_file = store_dir.join(format!("{}.age", &old_name));
+    let new_path_file = store_dir.join(format!("{}.age", &new_name));
+    // for git later
+    let old_canon_name = canonicalise(&store_dir.join(&old_name))?;
+    let new_canon_name = canonicalise(&store_dir.join(&new_name))?;
+
+    if !old_name.ends_with('/') && old_path_file.is_file() {
         old_path = old_path_file;
     } else if !old_path.is_dir() {
         return Err(format!("No such file or directory: {}[.age]", old_path.display()).into());
@@ -1103,11 +1108,13 @@ fn move_name(
         return Err(format!("Source {} must not be the whole store!", old_path.display()).into());
     }
 
-    if new_name.pop() == Some('/') || new_path.is_dir() {
+    if new_name.ends_with('/') || new_path.is_dir() {
         new_path = new_path.join(old_path.file_name().unwrap());
+    } else if old_path.is_file() {
+        new_path = new_path_file;
     }
 
-    if old_path == new_path {
+    if old_path.canonicalize()? == canonicalise(&new_path)? {
         return Err(format!(
             "Source {} and destination {} are identical!",
             old_path.display(),
@@ -1148,10 +1155,10 @@ fn move_name(
             .exit_ok()?;
         let message = format!(
             "Rename {} to {}",
-            canonicalise(&store_dir.join(&old_name))?
+            old_canon_name
                 .strip_prefix(canon_store_dir)?
                 .display(),
-            canonicalise(&store_dir.join(&new_name))?
+            new_canon_name
                 .strip_prefix(canon_store_dir)?
                 .display()
         );
@@ -1169,13 +1176,16 @@ fn remove(
     identity_file: PathBuf,
     store_dir: PathBuf,
     recursive: bool,
-    mut name: String,
+    name: String,
 ) -> Result<(), Box<dyn Error>> {
     let canon_store_dir = identity_file.parent().unwrap();
     let mut path = store_dir.join(&name);
-    let path_file = path.with_extension("age");
-    if name.pop() != Some('/') && path_file.is_file() {
-        path = path_file;
+    let path_file = store_dir.join(format!("{}.age", &name));
+    // for git later
+    let canon_name = canonicalise(&store_dir.join(&name))?;
+
+    if !name.ends_with('/') && path_file.is_file() {
+        path = path_file.canonicalize()?;
         println!("Removing {}", path.display());
         fs::remove_file(&path)?;
     } else if !path.is_dir() {
@@ -1183,6 +1193,7 @@ fn remove(
     } else if path.canonicalize()? == canon_store_dir {
         return Err(format!("Target {} must not be the whole store!", path.display()).into());
     } else if recursive {
+        path = path.canonicalize()?;
         println!("Removing {}", path.display());
         fs::remove_dir_all(&path)?;
     } else {
@@ -1202,7 +1213,7 @@ fn remove(
             .exit_ok()?;
         let message = format!(
             "Remove {}",
-            canonicalise(&store_dir.join(&name))?
+            canon_name
                 .strip_prefix(canon_store_dir)?
                 .display()
         );
