@@ -8,7 +8,7 @@ url='https://gitlab.com/retirement-home/senior'
 license=('AGPL3')
 depends=(wl-clipboard tree)
 optdepends=(git)
-makedepends=(cargo-nightly git)
+makedepends=(cargo git)
 source=("git+${url}.git")
 md5sums=('SKIP')
 rustdir="src/senior"
@@ -20,7 +20,6 @@ pkgver() {
 
 build() {
 	cd "$pkgname/$rustdir"
-	export RUSTUP_TOOLCHAIN=nightly
 	cargo build --bins --locked --release --target-dir target
 }
 

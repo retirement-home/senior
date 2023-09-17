@@ -1155,12 +1155,8 @@ fn move_name(
             .exit_ok()?;
         let message = format!(
             "Rename {} to {}",
-            old_canon_name
-                .strip_prefix(canon_store_dir)?
-                .display(),
-            new_canon_name
-                .strip_prefix(canon_store_dir)?
-                .display()
+            old_canon_name.strip_prefix(canon_store_dir)?.display(),
+            new_canon_name.strip_prefix(canon_store_dir)?.display()
         );
         Command::new("git")
             .arg("-C")
@@ -1213,9 +1209,7 @@ fn remove(
             .exit_ok()?;
         let message = format!(
             "Remove {}",
-            canon_name
-                .strip_prefix(canon_store_dir)?
-                .display()
+            canon_name.strip_prefix(canon_store_dir)?.display()
         );
         Command::new("git")
             .arg("-C")
