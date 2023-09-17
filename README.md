@@ -183,7 +183,7 @@ Make sure you have the dependencies installed (look at `depends` and `makedepend
 ## Import from pass
 Use the script [pass2senior.py](src/importers/pass2senior.py) to import your passwords.
 ```sh
-./pass2senior.py ~/.pass "$(senior print-dir)"
+./pass2senior.py ~/.password-store "$(senior print-dir)"
 # set a passphrase
 senior change-passphrase
 ```
