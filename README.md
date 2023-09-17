@@ -1,4 +1,4 @@
-# senior
+![senior](other/logo.svg)
 
 A Password Manager Using [age](https://github.com/FiloSottile/age) for Encryption
 
