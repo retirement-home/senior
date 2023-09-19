@@ -19,6 +19,7 @@ senior's features are
 - Clipboard support
 - Select and automatically type a password via `seniormenu`
 - git support
+- Completions for bash and zsh
 - Passphrase protected identities
 - Passphrases only need to be entered once per session and then get cached by `senior-agent`
 - A store can be shared among a group (encryption for multiple recipients)
@@ -29,6 +30,8 @@ senior's features are
 To do:
 - man page
 - Android app
+- Browser Add-On
+- More import scripts
 
 ## Usage
 ### Create a New Store
