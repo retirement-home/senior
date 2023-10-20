@@ -111,4 +111,7 @@ pub enum CliCommand {
 
     /// Change the store's passphrase
     ChangePassphrase,
+
+    /// Unlock but don't show a password
+    Unlock,
 }

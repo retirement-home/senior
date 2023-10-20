@@ -1472,6 +1472,12 @@ fn change_passphrase(identity_file: PathBuf) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn unlock_only(identity_file: PathBuf) -> Result<(), Box<dyn Error>> {
+    let mut counter: u32 = 0;
+    get_or_ask_passphrase(identity_file.to_str().unwrap(), &mut counter)?;
+    Ok(())
+}
+
 fn get_canonicalised_identity_file(
     store_dir: &Path,
     name: &str,
@@ -1601,7 +1607,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .into());
             }
         }
-        CliCommand::AddRecipient { .. } | CliCommand::Reencrypt | CliCommand::ChangePassphrase => {
+        CliCommand::AddRecipient { .. } | CliCommand::Reencrypt | CliCommand::ChangePassphrase | CliCommand::Unlock => {
             get_canonicalised_identity_file(&store_dir, "")?
         }
         _ => PathBuf::new(),
@@ -1651,5 +1657,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(())
         }
         CliCommand::ChangePassphrase => change_passphrase(canonicalised_identity_file),
+        CliCommand::Unlock => unlock_only(canonicalised_identity_file)
     }
 }
