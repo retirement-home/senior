@@ -1474,7 +1474,11 @@ fn change_passphrase(identity_file: PathBuf) -> Result<(), Box<dyn Error>> {
 
 fn unlock_only(identity_file: PathBuf) -> Result<(), Box<dyn Error>> {
     let mut counter: u32 = 0;
-    get_or_ask_passphrase(identity_file.to_str().unwrap(), &mut counter)?;
+    let passphrase = get_or_ask_passphrase(identity_file.to_str().unwrap(), &mut counter)?;
+    agent_set_passphrase(
+        identity_file.to_str().unwrap(),
+        &passphrase.0,
+    )?;
     Ok(())
 }
 
