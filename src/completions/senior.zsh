@@ -252,7 +252,7 @@ _senior_commands() {
 'add-recipient:Add recipient' \
 'reencrypt:Reencrypt the entire store' \
 'change-passphrase:Change the store'\''s passphrase' \
-'unlock:Unlock but don'\''t show a password' \
+'unlock:Unlock a store without showing any password' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'senior commands' commands "$@"
@@ -321,6 +321,7 @@ _senior__help_commands() {
 'add-recipient:Add recipient' \
 'reencrypt:Reencrypt the entire store' \
 'change-passphrase:Change the store'\''s passphrase' \
+'unlock:Unlock a store without showing any password' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'senior help commands' commands "$@"
@@ -394,6 +395,11 @@ _senior__show_commands() {
 _senior__help__unlock_commands() {
     local commands; commands=()
     _describe -t commands 'senior help unlock commands' commands "$@"
+}
+(( $+functions[_senior__unlock_commands] )) ||
+_senior__unlock_commands() {
+    local commands; commands=()
+    _describe -t commands 'senior unlock commands' commands "$@"
 }
 
 if [ "$funcstack[1]" = "_senior" ]; then
