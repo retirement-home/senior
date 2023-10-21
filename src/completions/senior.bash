@@ -144,6 +144,9 @@ _senior() {
             senior__help,show)
                 cmd="senior__help__show"
                 ;;
+            senior__help,unlock)
+                cmd="senior__help__unlock"
+                ;;
             *)
                 ;;
         esac
@@ -151,7 +154,7 @@ _senior() {
 
     case "${cmd}" in
         senior)
-            opts="-s -h -V --store --help --version init clone edit show mv rm print-dir git add-recipient reencrypt change-passphrase help"
+            opts="-s -h -V --store --help --version init clone edit show mv rm print-dir git add-recipient reencrypt change-passphrase unlock help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -233,7 +236,7 @@ _senior() {
             COMPREPLY+=($(compgen -W "init push pull config log reflog rebase" -- ${cur}))
             ;;
         senior__help)
-            opts="init clone edit show mv rm print-dir git add-recipient reencrypt change-passphrase help"
+            opts="init clone edit show mv rm print-dir git add-recipient reencrypt change-passphrase unlock help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
