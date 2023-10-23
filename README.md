@@ -16,16 +16,15 @@ It is inspired by [pass](https://git.zx2c4.com/password-store/).
 senior's features are
 - Multiple stores
 - OTP support
-- Clipboard support
-- Select and automatically type a password via `seniormenu`
+- Clipboard support for [Linux](https://kernel.org/) ([Wayland](https://wayland.freedesktop.org/) and [X11](https://www.x.org/wiki/)), [Termux](https://termux.dev/en/), [WSL](https://learn.microsoft.com/en-us/windows/wsl/about), [Darwin](https://opensource.apple.com/) ([macOS](https://www.apple.com/macos/))
+- Select and automatically copy or type ([ydotool](https://github.com/ReimuNotMoe/ydotool) or [xdotool](https://github.com/jordansissel/xdotool)) a password via `seniormenu`
 - git support
 - Completions for bash and zsh
+- No config files
 - Passphrase protected identities
 - Passphrases only need to be entered once per session and then get cached by `senior-agent`
 - A store can be shared among a group (encryption for multiple recipients)
 - Symlinks between stores are supported
-- No config files
-- Supported environments: [Linux](https://kernel.org/) ([Wayland](https://wayland.freedesktop.org/) and [X11](https://www.x.org/wiki/)), [Termux](https://termux.dev/en/), [WSL](https://learn.microsoft.com/en-us/windows/wsl/about), [Darwin](https://opensource.apple.com/) ([macOS](https://www.apple.com/macos/))
 
 To do:
 - man page
@@ -85,7 +84,7 @@ $ senior show -k otp example.com
 
 ### git Support
 With `senior git` you can run git commands in the `senior print-dir` directory.
-If you have initalised your store for git use then
+If you have initialised your store for git use then
 any `senior edit` creates a git-commit.
 To sync it with remote, run
 ```sh
