@@ -27,7 +27,6 @@ senior's features are
 - Symlinks between stores are supported
 
 To do:
-- man page
 - Android app
 - Browser Add-On
 - More import scripts

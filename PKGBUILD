@@ -1,6 +1,6 @@
 # Maintainer: Stefan <stefangehr@protonmail.com>
 pkgname=senior
-pkgver=r67.e9c2e3f
+pkgver=r142.0ca64d1
 pkgrel=1
 pkgdesc='password manager using age as backend; inspired by pass'
 arch=('any')
@@ -31,4 +31,5 @@ package() {
 	install -Dm755 src/seniormenu -t "$pkgdir"/usr/bin/
 	install -Dm644 src/completions/senior.zsh "$pkgdir"/usr/share/zsh/site-functions/_senior
 	install -Dm644 src/completions/senior.bash "$pkgdir"/usr/share/bash-completion/completions/senior
+	install -Dm644 src/man/* -t "$pkgdir"/usr/share/man/man1
 }
