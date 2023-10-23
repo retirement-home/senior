@@ -31,5 +31,24 @@ fn main() -> Result<(), Error> {
     .expect("Failed to generate Zsh completion");
 
     println!("cargo:warning=Generated zsh completion: {:?}", zsh_path);
+
+    let out_dir = std::path::PathBuf::from("../man");
+    std::fs::create_dir_all(&out_dir)?;
+    let man = clap_mangen::Man::new(cmd);
+    let mut buffer: Vec<u8> = Default::default();
+    man.render(&mut buffer)?;
+    let man_file = out_dir.join("senior.1");
+    std::fs::write(&man_file, buffer)?;
+    println!("cargo:warning=Generated man page {}", man_file.display());
+
+    for subcommand in Cli::command().get_subcommands() {
+        let man = clap_mangen::Man::new(subcommand.clone());
+        let mut buffer: Vec<u8> = Default::default();
+        man.render(&mut buffer)?;
+        let man_file = out_dir.join(format!("senior-{}.1", subcommand.get_name()));
+        std::fs::write(&man_file, buffer)?;
+        println!("cargo:warning=Generated man page {}", man_file.display());
+    }
+
     Ok(())
 }
