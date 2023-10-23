@@ -10,13 +10,13 @@ MANDIR := $(PREFIX)/local/share/man/man1
 
 RUSTDIR := src/senior
 
-$(RUSTDIR)/target/release/senior $(RUSTDIR)/target/release/senior-agent: src/senior/src/*
+$(RUSTDIR)/target/release/senior $(RUSTDIR)/target/release/senior-agent src/man/senior.1: src/senior/src/*
 	cargo build --manifest-path $(RUSTDIR)/Cargo.toml --bins --locked --release --target-dir $(RUSTDIR)/target
 
 help:
 	$(info run `make && sudo make install` or `sudo make uninstall`)
 
-build: $(RUSTDIR)/target/release/senior $(RUSTDIR)/target/release/senior-agent
+build: $(RUSTDIR)/target/release/senior $(RUSTDIR)/target/release/senior-agent src/man/senior.1
 
 install: build
 	mkdir -p $(shell dirname $(BINARY))
