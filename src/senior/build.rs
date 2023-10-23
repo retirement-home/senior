@@ -1,11 +1,39 @@
 use clap::CommandFactory;
 use clap_complete::{generate_to, shells::Bash, shells::Zsh};
+use clap_mangen::Man;
 use std::env;
-use std::io::Error;
+use std::path::Path;
+use std::fs::File;
+use std::io::Result;
+use clap::Command;
+use std::io::Write;
 
 include!("src/cli.rs");
 
-fn main() -> Result<(), Error> {
+fn generate_manpages(dir: &Path) -> Result<()> {
+    fn generate(dir: &Path, app: &Command) -> Result<()> {
+        std::fs::create_dir_all(dir)?;
+        let name = app.get_display_name().unwrap_or_else(|| app.get_name());
+        let mut out = File::create(dir.join(format!("{name}.1")))?;
+
+        Man::new(app.clone()).title(name.to_uppercase()).manual("senior").render(&mut out)?;
+        out.flush()?;
+
+        for sub in app.get_subcommands() {
+            let sub = sub.clone().name(format!("senior {}", sub.get_name()));
+            generate(dir, &sub)?;
+        }
+        Ok(())
+    }
+
+    let mut app = Cli::command().disable_help_subcommand(true);
+    app.build();
+
+    println!("cargo:warning=generating manpages in ../man/");
+    generate(dir, &app)
+}
+
+fn main() -> Result<()> {
     print!("cargo:rerun-if-changed=build.rs");
     print!("cargo:rerun-if-changed=src/cli.rs");
     let outdir = match env::var_os("OUT_DIR") {
@@ -33,22 +61,7 @@ fn main() -> Result<(), Error> {
     println!("cargo:warning=Generated zsh completion: {:?}", zsh_path);
 
     let out_dir = std::path::PathBuf::from("../man");
-    std::fs::create_dir_all(&out_dir)?;
-    let man = clap_mangen::Man::new(cmd);
-    let mut buffer: Vec<u8> = Default::default();
-    man.render(&mut buffer)?;
-    let man_file = out_dir.join("senior.1");
-    std::fs::write(&man_file, buffer)?;
-    println!("cargo:warning=Generated man page {}", man_file.display());
-
-    for subcommand in Cli::command().get_subcommands() {
-        let man = clap_mangen::Man::new(subcommand.clone());
-        let mut buffer: Vec<u8> = Default::default();
-        man.render(&mut buffer)?;
-        let man_file = out_dir.join(format!("senior-{}.1", subcommand.get_name()));
-        std::fs::write(&man_file, buffer)?;
-        println!("cargo:warning=Generated man page {}", man_file.display());
-    }
+    generate_manpages(&out_dir)?;
 
     Ok(())
 }
