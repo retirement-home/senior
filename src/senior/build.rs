@@ -29,7 +29,7 @@ fn generate_manpages(dir: &Path) -> Result<()> {
     let mut app = Cli::command().disable_help_subcommand(true);
     app.build();
 
-    println!("cargo:warning=generating manpages in ../man/");
+    println!("cargo:warning=Generating manpages in ../man/");
     generate(dir, &app)
 }
 

@@ -4,6 +4,7 @@ use clap::{builder::ValueHint, Parser, Subcommand};
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
+/// A password manager, inspired by password-store, using age for encryption
 pub struct Cli {
     /// Alias for the store; default: "main", or the only existing one,
     ///                      or for `senior clone` the name of the repository
