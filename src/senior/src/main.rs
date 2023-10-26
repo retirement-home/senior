@@ -448,7 +448,7 @@ fn init_helper(
 }
 
 fn init(
-    store_dir: PathBuf,
+    store_dir: &Path,
     identity: Option<String>,
     recipient_alias: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
@@ -492,7 +492,7 @@ fn git_clone_helper(
 }
 
 fn git_clone(
-    store_dir: PathBuf,
+    store_dir: &Path,
     identity: Option<String>,
     address: String,
 ) -> Result<(), Box<dyn Error>> {
@@ -795,7 +795,7 @@ fn tempdir() -> std::io::Result<TempDir> {
 // edit store_dir/name.age
 // decrypt via identity_file
 // encrypt via identity_file.parent()/.recipients/
-fn edit(identity_file: PathBuf, store_dir: PathBuf, name: String) -> Result<(), Box<dyn Error>> {
+fn edit(identity_file: &Path, store_dir: &Path, name: String) -> Result<(), Box<dyn Error>> {
     let canon_store_dir = identity_file.parent().unwrap();
     let agefile = canonicalise(&store_dir.join(format!("{}.age", name)))?;
 
@@ -907,8 +907,8 @@ where
 }
 
 fn show(
-    identity_file: PathBuf,
-    store_dir: PathBuf,
+    identity_file: &Path,
+    store_dir: &Path,
     clip: bool,
     key: Option<String>,
     name: String,
@@ -1106,8 +1106,8 @@ fn removedirs(path: &Path) -> io::Result<()> {
 }
 
 fn move_name(
-    identity_file: PathBuf,
-    store_dir: PathBuf,
+    identity_file: &Path,
+    store_dir: &Path,
     old_name: String,
     new_name: String,
 ) -> Result<(), Box<dyn Error>> {
@@ -1189,8 +1189,8 @@ fn move_name(
 }
 
 fn remove(
-    identity_file: PathBuf,
-    store_dir: PathBuf,
+    identity_file: &Path,
+    store_dir: &Path,
     recursive: bool,
     name: String,
 ) -> Result<(), Box<dyn Error>> {
@@ -1308,7 +1308,7 @@ fn reencrypt(identity_file: &Path) -> Result<bool, Box<dyn Error>> {
 }
 
 fn add_recipient(
-    identity_file: PathBuf,
+    identity_file: &Path,
     public_key: String,
     alias: String,
 ) -> Result<(), Box<dyn Error>> {
@@ -1369,7 +1369,7 @@ fn add_recipient(
     Ok(())
 }
 
-fn change_passphrase(identity_file: PathBuf) -> Result<(), Box<dyn Error>> {
+fn change_passphrase(identity_file: &Path) -> Result<(), Box<dyn Error>> {
     let store_dir = identity_file.parent().unwrap();
     let extension = identity_file.extension().unwrap().to_str().unwrap();
     match extension {
@@ -1632,17 +1632,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         CliCommand::Init {
             identity,
             recipient_alias,
-        } => init(store_dir, identity, recipient_alias),
-        CliCommand::GitClone { identity, address } => git_clone(store_dir, identity, address),
-        CliCommand::Edit { name } => edit(canonicalised_identity_file, store_dir, name),
+        } => init(&store_dir, identity, recipient_alias),
+        CliCommand::GitClone { identity, address } => git_clone(&store_dir, identity, address),
+        CliCommand::Edit { name } => edit(&canonicalised_identity_file, &store_dir, name),
         CliCommand::Show { clip, key, name } => {
-            show(canonicalised_identity_file, store_dir, clip, key, name)
+            show(&canonicalised_identity_file, &store_dir, clip, key, name)
         }
         CliCommand::Mv { old_name, new_name } => {
-            move_name(canonicalised_identity_file, store_dir, old_name, new_name)
+            move_name(&canonicalised_identity_file, &store_dir, old_name, new_name)
         }
         CliCommand::Rm { recursive, name } => {
-            remove(canonicalised_identity_file, store_dir, recursive, name)
+            remove(&canonicalised_identity_file, &store_dir, recursive, name)
         }
         CliCommand::PrintDir => {
             println!("{}", store_dir.display());
@@ -1658,7 +1658,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(())
         }
         CliCommand::AddRecipient { public_key, alias } => {
-            add_recipient(canonicalised_identity_file, public_key, alias)
+            add_recipient(&canonicalised_identity_file, public_key, alias)
         }
         CliCommand::Reencrypt => {
             if reencrypt(&canonicalised_identity_file)? {
@@ -1671,7 +1671,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             Ok(())
         }
-        CliCommand::ChangePassphrase => change_passphrase(canonicalised_identity_file),
+        CliCommand::ChangePassphrase => change_passphrase(&canonicalised_identity_file),
         CliCommand::Unlock { check } => unlock(&canonicalised_identity_file, check),
     }
 }
