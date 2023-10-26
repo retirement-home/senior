@@ -647,7 +647,11 @@ fn decrypt_password(
 fn unlock(identity_file: &Path, check: bool) -> Result<(), Box<dyn Error>> {
     if check {
         match agent_get_passphrase(identity_file.to_str().unwrap())? {
-            None => Err(format!("The identity file {} is not cached by senior-agent!", identity_file.display()).into()),
+            None => Err(format!(
+                "The identity file {} is not cached by senior-agent!",
+                identity_file.display()
+            )
+            .into()),
             Some(_) => Ok(()),
         }
     } else {

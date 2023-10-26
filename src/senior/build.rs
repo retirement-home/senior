@@ -1,12 +1,12 @@
+use clap::Command;
 use clap::CommandFactory;
 use clap_complete::{generate_to, shells::Bash, shells::Zsh};
 use clap_mangen::Man;
 use std::env;
-use std::path::Path;
 use std::fs::File;
 use std::io::Result;
-use clap::Command;
 use std::io::Write;
+use std::path::Path;
 
 include!("src/cli.rs");
 
@@ -16,7 +16,10 @@ fn generate_manpages(dir: &Path) -> Result<()> {
         let name = app.get_display_name().unwrap_or_else(|| app.get_name());
         let mut out = File::create(dir.join(format!("{}.1", name)))?;
 
-        Man::new(app.clone()).title(name.to_uppercase()).manual("senior").render(&mut out)?;
+        Man::new(app.clone())
+            .title(name.to_uppercase())
+            .manual("senior")
+            .render(&mut out)?;
         out.flush()?;
 
         for sub in app.get_subcommands() {
