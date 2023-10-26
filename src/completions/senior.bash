@@ -519,7 +519,7 @@ _senior() {
             return 0
             ;;
         senior__unlock)
-            opts="-h --help"
+            opts="-h --check --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

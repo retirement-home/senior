@@ -161,6 +161,7 @@ _arguments "${_arguments_options[@]}" \
 ;;
 (unlock)
 _arguments "${_arguments_options[@]}" \
+'--check[Do not prompt to unlock; Return an error if the store is locked; Useful for scripts]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
