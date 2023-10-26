@@ -114,5 +114,10 @@ pub enum CliCommand {
     ChangePassphrase,
 
     /// Unlock a store without showing any password
-    Unlock,
+    Unlock {
+        /// Do not prompt to unlock; Return an error if the store is locked;
+        /// Useful for scripts
+        #[arg(long)]
+        check: bool
+    },
 }

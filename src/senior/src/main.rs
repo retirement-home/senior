@@ -644,6 +644,17 @@ fn decrypt_password(
     Ok(password_decryptor.decrypt(identities.iter().map(|i| i.as_ref()))?)
 }
 
+fn unlock(identity_file: &Path, check: bool) -> Result<(), Box<dyn Error>> {
+    if check {
+        match agent_get_passphrase(identity_file.to_str().unwrap())? {
+            None => Err(format!("The identity file {} is not cached by senior-agent!", identity_file.display()).into()),
+            Some(_) => Ok(()),
+        }
+    } else {
+        unlock_identity(&identity_file, &mut vec![])
+    }
+}
+
 fn get_editor() -> (OsString, Vec<&'static str>) {
     let mut editors = ["nvim", "vim", "emacs", "nano", "vi"].into_iter();
     let mut editor_args = HashMap::new();
@@ -1609,7 +1620,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         CliCommand::AddRecipient { .. }
         | CliCommand::Reencrypt
         | CliCommand::ChangePassphrase
-        | CliCommand::Unlock => get_canonicalised_identity_file(&store_dir, "")?,
+        | CliCommand::Unlock { .. } => get_canonicalised_identity_file(&store_dir, "")?,
         _ => PathBuf::new(),
     };
 
@@ -1657,6 +1668,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(())
         }
         CliCommand::ChangePassphrase => change_passphrase(canonicalised_identity_file),
-        CliCommand::Unlock => unlock_identity(&canonicalised_identity_file, &mut vec![]),
+        CliCommand::Unlock { check } => unlock(&canonicalised_identity_file, check),
     }
 }
