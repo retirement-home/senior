@@ -14,7 +14,7 @@ fn generate_manpages(dir: &Path) -> Result<()> {
     fn generate(dir: &Path, app: &Command) -> Result<()> {
         std::fs::create_dir_all(dir)?;
         let name = app.get_display_name().unwrap_or_else(|| app.get_name());
-        let mut out = File::create(dir.join(format!("{name}.1")))?;
+        let mut out = File::create(dir.join(format!("{}.1", name)))?;
 
         Man::new(app.clone()).title(name.to_uppercase()).manual("senior").render(&mut out)?;
         out.flush()?;
@@ -29,7 +29,6 @@ fn generate_manpages(dir: &Path) -> Result<()> {
     let mut app = Cli::command().disable_help_subcommand(true);
     app.build();
 
-    println!("cargo:warning=Generating manpages in ../man/");
     generate(dir, &app)
 }
 
@@ -62,6 +61,7 @@ fn main() -> Result<()> {
 
     let out_dir = std::path::PathBuf::from("../man");
     generate_manpages(&out_dir)?;
+    println!("cargo:warning=Generated manpages in ../man/");
 
     Ok(())
 }
