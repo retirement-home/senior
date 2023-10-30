@@ -123,6 +123,10 @@ fn agent_set_passphrase(key: &str, passphrase: &str) -> Result<(), Box<dyn Error
         match LocalSocketStream::connect(agent_socket_name()) {
             Err(e) if once && !agent_is_running && e.kind() == io::ErrorKind::ConnectionRefused => {
                 once = false;
+                if which::which("senior-agent").is_err() {
+                    eprintln!("Warning: Cannot find senior-agent!");
+                    return Ok(());
+                }
                 let child = Command::new("senior-agent")
                     .stdin(Stdio::null())
                     .stdout(Stdio::piped())
