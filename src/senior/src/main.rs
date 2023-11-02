@@ -456,11 +456,11 @@ fn init(
     identity: Option<String>,
     recipient_alias: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
-    match init_helper(&store_dir, identity, recipient_alias) {
+    match init_helper(store_dir, identity, recipient_alias) {
         Err(e) => {
             // cleanup
             if store_dir.is_dir() {
-                if let Err(e) = fs::remove_dir_all(&store_dir) {
+                if let Err(e) = fs::remove_dir_all(store_dir) {
                     eprintln!("Error cleaning up {}! {}", store_dir.display(), e);
                 }
             }
@@ -500,11 +500,11 @@ fn git_clone(
     identity: Option<String>,
     address: String,
 ) -> Result<(), Box<dyn Error>> {
-    match git_clone_helper(&store_dir, identity, address) {
+    match git_clone_helper(store_dir, identity, address) {
         Err(e) => {
             // cleanup
             if store_dir.is_dir() {
-                if let Err(e) = fs::remove_dir_all(&store_dir) {
+                if let Err(e) = fs::remove_dir_all(store_dir) {
                     eprintln!("Error cleaning up {}! {}", store_dir.display(), e);
                 }
             }
@@ -625,10 +625,12 @@ fn unlock_identity(
     Ok(())
 }
 
+// decrypts agefile and returns the reader
+// if identities is an empty vector they will get imported via unlock_identity
 fn decrypt_password(
     identity_file: &Path,
-    agefile: &Path,
     identities: &mut Vec<Box<dyn age::Identity>>,
+    agefile: &Path,
 ) -> Result<age::stream::StreamReader<File>, Box<dyn Error>> {
     let password_decryptor = match age::Decryptor::new(File::open(agefile)?)? {
         age::Decryptor::Recipients(d) => d,
@@ -650,6 +652,12 @@ fn decrypt_password(
 
 fn unlock(identity_file: &Path, check: bool) -> Result<(), Box<dyn Error>> {
     if check {
+        let extension = identity_file.extension().unwrap();
+        if extension == "txt"
+            || (extension == "ssh" && !identity_file.to_str().unwrap().ends_with(".pass.ssh"))
+        {
+            return Ok(());
+        }
         match agent_get_passphrase(identity_file.to_str().unwrap())? {
             None => Err(format!(
                 "The identity file {} is not cached by senior-agent!",
@@ -659,7 +667,7 @@ fn unlock(identity_file: &Path, check: bool) -> Result<(), Box<dyn Error>> {
             Some(_) => Ok(()),
         }
     } else {
-        unlock_identity(&identity_file, &mut vec![])
+        unlock_identity(identity_file, &mut vec![])
     }
 }
 
@@ -696,6 +704,19 @@ fn get_editor() -> (OsString, Vec<&'static str>) {
     (editor, args)
 }
 
+fn recipient_from_str(line: &str) -> Result<Box<dyn age::Recipient + Send>, Box<dyn Error>> {
+    if line.starts_with("ssh-") {
+        ssh::Recipient::from_str(line)
+            .map(|r| Box::new(r) as Box<dyn age::Recipient + Send>)
+            .map_err(|e| format!("{:?}", e).into())
+    } else {
+        age::x25519::Recipient::from_str(line)
+            .map(|r| Box::new(r) as Box<dyn age::Recipient + Send>)
+            .map_err(|e| e.into())
+    }
+}
+
+// Recursively read the textfiles in dir and save the recipients into the supplied vector
 fn get_recipients_recursive(
     dir: &Path,
     recipients: &mut Vec<Box<dyn age::Recipient + Send>>,
@@ -711,37 +732,20 @@ fn get_recipients_recursive(
                 if line.starts_with('#') {
                     continue;
                 }
-                if line.starts_with("ssh") {
-                    match ssh::Recipient::from_str(&line) {
-                        Ok(r) => recipients.push(Box::new(r) as Box<dyn age::Recipient + Send>),
-                        Err(e) => {
-                            return Err(format!(
-                                "Could not process ssh recipient in {}:{}!\n{:?}",
-                                child.display(),
-                                i + 1,
-                                e
-                            )
-                            .into())
-                        }
-                    }
-                } else {
-                    match age::x25519::Recipient::from_str(&line) {
-                        Ok(r) => recipients.push(Box::new(r) as Box<dyn age::Recipient + Send>),
-                        Err(e) => {
-                            return Err(format!(
-                                "Could not process age recipient in {}:{}!\n{:?}",
-                                child.display(),
-                                i + 1,
-                                e
-                            )
-                            .into())
-                        }
-                    }
-                }
+                let recipient = recipient_from_str(&line).map_err(|e| -> Box<dyn Error> {
+                    format!(
+                        "Could not process the recipient in {}:{}! {}",
+                        child.display(),
+                        i + 1,
+                        e
+                    )
+                    .into()
+                })?;
+                recipients.push(recipient);
             }
         } else {
             panic!(
-                "{} unsupported file type!\n{:?}",
+                "{} unsupported file type! {:?}",
                 child.display(),
                 child.metadata()?.file_type()
             );
@@ -750,6 +754,8 @@ fn get_recipients_recursive(
     Ok(())
 }
 
+// encrypts the contents of source into target_file
+// if recipients is an empty vector, they will get imported from recipients_dir using get_recipients_recursive
 fn encrypt_password(
     recipients_dir: &Path,
     mut source: impl Read,
@@ -811,7 +817,7 @@ fn edit(identity_file: &Path, store_dir: &Path, name: String) -> Result<(), Box<
 
     // decrypt if it exists
     let old_content = if agefile.is_file() {
-        let mut reader = decrypt_password(&identity_file, &agefile, &mut vec![])?;
+        let mut reader = decrypt_password(identity_file, &mut vec![], &agefile)?;
         let mut old_content = vec![];
         reader.read_to_end(&mut old_content)?;
         File::create(&tmpfile_txt)?.write_all(&old_content)?;
@@ -989,7 +995,7 @@ fn show(
         return Ok(());
     }
 
-    let mut reader = decrypt_password(&identity_file, &agefile, &mut vec![])?;
+    let mut reader = decrypt_password(identity_file, &mut vec![], &agefile)?;
     let mut output = String::new();
     reader.read_to_string(&mut output)?;
     let mut _otp = String::new();
@@ -1280,7 +1286,7 @@ fn reencrypt(identity_file: &Path) -> Result<bool, Box<dyn Error>> {
             }
 
             let mut content = vec![];
-            decrypt_password(identity_file, &entry_path, identities)?.read_to_end(&mut content)?;
+            decrypt_password(identity_file, identities, &entry_path)?.read_to_end(&mut content)?;
             encrypt_password(recipients_dir, &content[..], &entry_path)?;
             collect.push(entry_path);
         }
@@ -1316,7 +1322,41 @@ fn add_recipient(
     public_key: String,
     alias: String,
 ) -> Result<(), Box<dyn Error>> {
+    // removes the comment from ssh-keys
+    // ssh keys look like this:
+    // ssh-<ed25519|rsa> <the-actual-key> <comment>
+    // To check if a key is already present we want to ignore the comment line
+    fn public_key_without_comment(public_key: &str) -> &str {
+        if public_key.starts_with("ssh-") {
+            let mut space_indices = public_key.match_indices(' ').take(2);
+            // there should always be at least one space in an ssh public key
+            assert!(
+                space_indices.next().is_some(),
+                "There is no space in this ssh key! {}",
+                public_key
+            );
+            match space_indices.next() {
+                // no comment => return entire string
+                None => public_key,
+                // there is a comment => return string up to the comment
+                Some((i, _)) => &public_key[0..i],
+            }
+        } else {
+            public_key
+        }
+        .trim()
+    }
+
+    if let Err(e) = recipient_from_str(&public_key) {
+        return Err(format!(
+            "The supplied recipient is not a valid age or ssh public key! {}",
+            e
+        )
+        .into());
+    }
+
     let recipients_dir = identity_file.parent().unwrap().join(".recipients");
+    let new_public_key_without_comment = public_key_without_comment(&public_key);
 
     // check if public_key is not already a recipient
     for recipient in recipients_dir
@@ -1328,7 +1368,7 @@ fn add_recipient(
             if line.trim_start().starts_with('#') {
                 continue;
             }
-            if line.contains(&public_key) {
+            if new_public_key_without_comment == public_key_without_comment(line) {
                 return Err(format!(
                     "Recipient already in {}:{}",
                     recipient.unwrap().path().display(),
@@ -1354,7 +1394,7 @@ fn add_recipient(
         .open(&recipients_file)?;
     write!(recipients_file_handle, "# {}\n{}\n", &alias, &public_key)?;
 
-    if reencrypt(&identity_file)? {
+    if reencrypt(identity_file)? {
         Command::new("git")
             .arg("-C")
             .arg(identity_file.parent().unwrap())
@@ -1385,18 +1425,18 @@ fn change_passphrase(identity_file: &Path) -> Result<(), Box<dyn Error>> {
             }
 
             let mut keyfile_content = vec![];
-            File::open(&identity_file)?.read_to_end(&mut keyfile_content)?;
+            File::open(identity_file)?.read_to_end(&mut keyfile_content)?;
 
             let new_identity_file = store_dir.join(".identity.age");
             let encryptor = age::Encryptor::with_user_passphrase(Secret::new(passphrase));
             let mut write_to = encryptor.wrap_output(File::create(new_identity_file)?)?;
             write_to.write_all(&keyfile_content)?;
             write_to.finish()?;
-            fs::remove_file(&identity_file)?;
+            fs::remove_file(identity_file)?;
         }
         "age" => loop {
             // passphrase age encrypted identity
-            let identity_decryptor = match age::Decryptor::new(File::open(&identity_file)?)? {
+            let identity_decryptor = match age::Decryptor::new(File::open(identity_file)?)? {
                 age::Decryptor::Passphrase(d) => d,
                 _ => return Err(format!("The identity file {} should be encrypted with a passphrase, not with recipients/identities!", identity_file.display()).into()),
             };
@@ -1424,7 +1464,7 @@ fn change_passphrase(identity_file: &Path) -> Result<(), Box<dyn Error>> {
             let new_identity_file = store_dir.join(new_identity_filename);
             if passphrase.is_empty() {
                 File::create(new_identity_file)?.write_all(&keyfile_content)?;
-                fs::remove_file(&identity_file)?;
+                fs::remove_file(identity_file)?;
             } else {
                 let tmp_dir = tempdir()?;
                 let tmp_identity_file = tmp_dir.path().join(new_identity_filename);
@@ -1439,7 +1479,7 @@ fn change_passphrase(identity_file: &Path) -> Result<(), Box<dyn Error>> {
         "ssh" => {
             // ssh key (with or without passphrase)
             let old_passphrase = match ssh::Identity::from_buffer(
-                BufReader::new(File::open(&identity_file)?),
+                BufReader::new(File::open(identity_file)?),
                 Some(identity_file.to_str().unwrap().to_owned()),
             )? {
                 ssh::Identity::Encrypted(k) => loop {
@@ -1483,8 +1523,8 @@ fn change_passphrase(identity_file: &Path) -> Result<(), Box<dyn Error>> {
                 .status()?
                 .exit_ok()?;
             match (old_passphrase.is_empty(), new_passphrase.is_empty()) {
-                (true, false) => fs::rename(&identity_file, store_dir.join(".identity.pass.ssh"))?,
-                (false, true) => fs::rename(&identity_file, store_dir.join(".identity.ssh"))?,
+                (true, false) => fs::rename(identity_file, store_dir.join(".identity.pass.ssh"))?,
+                (false, true) => fs::rename(identity_file, store_dir.join(".identity.ssh"))?,
                 _ => {}
             }
         }
