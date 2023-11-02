@@ -470,6 +470,29 @@ fn init(
     }
 }
 
+fn format_cmd(cmd: &[&str]) -> String {
+    let chars_who_need_to_be_escaped = [
+        '`', '!', '#', '$', '^', '&', '*', '(', ')', '{', '}', '|', '[', ']', '\\', ';', '\'', '"',
+        ',', '<', '>', '?', ' ',
+    ];
+    let mut s = String::new();
+    for arg in cmd {
+        if chars_who_need_to_be_escaped
+            .iter()
+            .any(|&c| arg.contains(c))
+        {
+            s.push('"');
+            s.push_str(&arg.replace('"', "\\\""));
+            s.push('"');
+        } else {
+            s.push_str(arg);
+        }
+        s.push(' ');
+    }
+    s.pop();
+    s
+}
+
 fn git_clone_helper(
     store_dir: &Path,
     identity: Option<String>,
@@ -486,10 +509,15 @@ fn git_clone_helper(
 
     println!("Tell an owner of the store to add you to the recipients. For this they should run the following command:");
     println!(
-        "senior -s {} add-recipient \"{}\" {}",
-        store_dir.file_name().unwrap().to_str().unwrap(),
-        &pubkey,
-        recipient_alias.to_str().unwrap()
+        "{}",
+        format_cmd(&[
+            "senior",
+            "-s",
+            store_dir.file_name().unwrap().to_str().unwrap(),
+            "add-recipient",
+            &pubkey,
+            recipient_alias.to_str().unwrap()
+        ])
     );
     println!("Note that their store name might differ.");
     Ok(())
@@ -729,7 +757,7 @@ fn get_recipients_recursive(
             let reader = BufReader::new(File::open(&child)?);
             for (i, line) in reader.lines().enumerate() {
                 let line = line?;
-                if line.starts_with('#') {
+                if line.starts_with('#') || line.trim().is_empty() {
                     continue;
                 }
                 let recipient = recipient_from_str(&line).map_err(|e| -> Box<dyn Error> {
