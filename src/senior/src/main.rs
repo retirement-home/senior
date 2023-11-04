@@ -261,26 +261,28 @@ fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, 
             let key = age::x25519::Identity::generate();
             let pubkey = key.to_public().to_string();
             fs::create_dir_all(store_dir)?;
-            let mut write_to = File::create(identity_file)?;
-            if use_passphrase {
+
+            let mut file_writer = File::create(&identity_file)?;
+            let mut file_writer_for_encryptor = File::create(&identity_file)?;
+            let mut encryptor_writer = if use_passphrase {
                 let encryptor = age::Encryptor::with_user_passphrase(Secret::new(passphrase));
-                let mut write_to = encryptor.wrap_output(&mut write_to).unwrap();
-                writeln!(
-                    write_to,
-                    "# created: {}",
-                    chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-                )?;
-                writeln!(write_to, "# public key: {}", &pubkey)?;
-                writeln!(write_to, "{}", key.to_string().expose_secret())?;
-                write_to.finish()?;
+                Some(encryptor.wrap_output(&mut file_writer_for_encryptor)?)
             } else {
-                writeln!(
-                    write_to,
-                    "# created: {}",
-                    chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-                )?;
-                writeln!(write_to, "# public key: {}", &pubkey)?;
-                writeln!(write_to, "{}", key.to_string().expose_secret())?;
+                None
+            };
+            let write_to: &mut dyn Write = match encryptor_writer.as_mut() {
+                Some(stream_writer) => stream_writer,
+                None => &mut file_writer,
+            };
+            writeln!(
+                write_to,
+                "# created: {}",
+                chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+            )?;
+            writeln!(write_to, "# public key: {}", &pubkey)?;
+            writeln!(write_to, "{}", key.to_string().expose_secret())?;
+            if let Some(stream_writer) = encryptor_writer {
+                stream_writer.finish()?;
             }
             Ok(pubkey)
         }
@@ -504,9 +506,9 @@ fn git_clone_helper(
         .status()?
         .exit_ok()?;
     let pubkey = setup_identity(store_dir, identity)?;
+    // TODO: Check if pubkey is already a recipient
 
     let recipient_alias = env::var_os("USER").unwrap_or(OsString::from("<name of recipient>"));
-
     println!("Tell an owner of the store to add you to the recipients. For this they should run the following command:");
     println!(
         "{}",
@@ -533,7 +535,11 @@ fn git_clone(
             // cleanup
             if store_dir.is_dir() {
                 if let Err(e) = fs::remove_dir_all(store_dir) {
-                    eprintln!("Error cleaning up {}! {}", store_dir.display(), e);
+                    eprintln!(
+                        "Error encountered while cleaning up {}! {}",
+                        store_dir.display(),
+                        e
+                    );
                 }
             }
             Err(e)
@@ -553,10 +559,8 @@ fn canonicalise(path: &Path) -> std::io::Result<PathBuf> {
     }
 }
 
-fn unlock_identity(
-    identity_file: &Path,
-    identities: &mut Vec<Box<dyn age::Identity>>,
-) -> Result<(), Box<dyn Error>> {
+fn unlock_identity(identity_file: &Path) -> Result<Vec<Box<dyn age::Identity>>, Box<dyn Error>> {
+    let mut identities = vec![];
     let mut try_counter = 0;
     match identity_file.extension().unwrap().to_str().unwrap() {
         "txt" => {
@@ -650,14 +654,12 @@ fn unlock_identity(
             identity_file.file_name().unwrap().to_str().unwrap()
         ),
     };
-    Ok(())
+    Ok(identities)
 }
 
 // decrypts agefile and returns the reader
-// if identities is an empty vector they will get imported via unlock_identity
 fn decrypt_password(
-    identity_file: &Path,
-    identities: &mut Vec<Box<dyn age::Identity>>,
+    identities: &[Box<dyn age::Identity>],
     agefile: &Path,
 ) -> Result<age::stream::StreamReader<File>, Box<dyn Error>> {
     let password_decryptor = match age::Decryptor::new(File::open(agefile)?)? {
@@ -670,10 +672,6 @@ fn decrypt_password(
             .into())
         }
     };
-
-    if identities.is_empty() {
-        unlock_identity(identity_file, identities)?;
-    }
 
     Ok(password_decryptor.decrypt(identities.iter().map(|i| i.as_ref()))?)
 }
@@ -695,7 +693,8 @@ fn unlock(identity_file: &Path, check: bool) -> Result<(), Box<dyn Error>> {
             Some(_) => Ok(()),
         }
     } else {
-        unlock_identity(identity_file, &mut vec![])
+        unlock_identity(identity_file)?;
+        Ok(())
     }
 }
 
@@ -732,14 +731,50 @@ fn get_editor() -> (OsString, Vec<&'static str>) {
     (editor, args)
 }
 
-fn recipient_from_str(line: &str) -> Result<Box<dyn age::Recipient + Send>, Box<dyn Error>> {
+// This is a helper trait to make the dynamic trait age::Recipient cloneable
+// By default Clone is not allowed for dynamic traits, because Clone is not object-safe. I have no
+// idea why and what exactly this means. I also have no idea why this workaround works. It is a bit
+// annoying to be honest, because here dyn age::Recipient can only mean age::x25519::Recipient or
+// ssh::Recipient and they both implement Clone!
+// Anyway, having recipients cloneable is nice to have, because age::Encryptor::with_recipients
+// **consumes** a vector of recipients. If we want to encrypt mulitple files in one go without
+// needing to reassemble the recipients from the .recipients directory then we need to be able to
+// clone them.
+trait RecipientClone: age::Recipient + Send {
+    fn clone_box(&self) -> Box<dyn RecipientClone>;
+    fn to_recipient(&self) -> Box<dyn age::Recipient + Send>;
+}
+impl RecipientClone for age::x25519::Recipient {
+    fn clone_box(&self) -> Box<dyn RecipientClone> {
+        Box::new(self.clone())
+    }
+    fn to_recipient(&self) -> Box<dyn age::Recipient + Send> {
+        Box::new(self.clone())
+    }
+}
+impl RecipientClone for ssh::Recipient {
+    fn clone_box(&self) -> Box<dyn RecipientClone> {
+        Box::new(self.clone())
+    }
+    fn to_recipient(&self) -> Box<dyn age::Recipient + Send> {
+        Box::new(self.clone())
+    }
+}
+// How is this allowed?
+impl Clone for Box<dyn RecipientClone> {
+    fn clone(&self) -> Box<dyn RecipientClone + 'static> {
+        self.clone_box()
+    }
+}
+
+fn recipient_from_str(line: &str) -> Result<Box<dyn RecipientClone>, Box<dyn Error>> {
     if line.starts_with("ssh-") {
         ssh::Recipient::from_str(line)
-            .map(|r| Box::new(r) as Box<dyn age::Recipient + Send>)
+            .map(|r| Box::new(r) as Box<dyn RecipientClone>)
             .map_err(|e| format!("{:?}", e).into())
     } else {
         age::x25519::Recipient::from_str(line)
-            .map(|r| Box::new(r) as Box<dyn age::Recipient + Send>)
+            .map(|r| Box::new(r) as Box<dyn RecipientClone>)
             .map_err(|e| e.into())
     }
 }
@@ -747,7 +782,7 @@ fn recipient_from_str(line: &str) -> Result<Box<dyn age::Recipient + Send>, Box<
 // Recursively read the textfiles in dir and save the recipients into the supplied vector
 fn get_recipients_recursive(
     dir: &Path,
-    recipients: &mut Vec<Box<dyn age::Recipient + Send>>,
+    recipients: &mut Vec<Box<dyn RecipientClone>>,
 ) -> Result<(), Box<dyn Error>> {
     for child in dir.read_dir()? {
         let child = child?.path().canonicalize()?;
@@ -757,7 +792,7 @@ fn get_recipients_recursive(
             let reader = BufReader::new(File::open(&child)?);
             for (i, line) in reader.lines().enumerate() {
                 let line = line?;
-                if line.starts_with('#') || line.trim().is_empty() {
+                if line.trim_start().starts_with('#') || line.trim().is_empty() {
                     continue;
                 }
                 let recipient = recipient_from_str(&line).map_err(|e| -> Box<dyn Error> {
@@ -782,19 +817,22 @@ fn get_recipients_recursive(
     Ok(())
 }
 
+// Use get_recipients_recursive(recipient_dir) to collect all recipients and return the vector
+fn get_recipients(recipient_dir: &Path) -> Result<Vec<Box<dyn RecipientClone>>, Box<dyn Error>> {
+    let mut recipients = vec![];
+    get_recipients_recursive(recipient_dir, &mut recipients)?;
+    Ok(recipients)
+}
+
 // encrypts the contents of source into target_file
-// if recipients is an empty vector, they will get imported from recipients_dir using get_recipients_recursive
 fn encrypt_password(
-    recipients_dir: &Path,
+    recipients: &[Box<dyn RecipientClone>],
     mut source: impl Read,
     target_file: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    let mut recipients = vec![];
-    get_recipients_recursive(recipients_dir, &mut recipients)?;
-    let encryptor = age::Encryptor::with_recipients(recipients).ok_or(format!(
-        "No recipients found in {}!",
-        recipients_dir.display()
-    ))?;
+    let encryptor =
+        age::Encryptor::with_recipients(recipients.iter().map(|r| r.to_recipient()).collect())
+            .ok_or("No recipients supplied!")?;
     let mut writer = encryptor.wrap_output(File::create(target_file)?)?;
     let mut content = vec![];
     source.read_to_end(&mut content)?;
@@ -830,6 +868,20 @@ fn tempdir() -> std::io::Result<TempDir> {
     }
 }
 
+fn git_commit(store_dir: &Path, message: &str) -> Result<(), Box<dyn Error>> {
+    // Add this info for context, in case commits get signed
+    // and some password-protected ssh-key needs to be unlocked
+    print!("git commit: ");
+    io::stdout().flush()?;
+
+    Command::new("git")
+        .arg("-C")
+        .arg(store_dir)
+        .args(["commit", "-m", &message])
+        .status()?
+        .exit_ok()
+}
+
 // edit store_dir/name.age
 // decrypt via identity_file
 // encrypt via identity_file.parent()/.recipients/
@@ -845,7 +897,7 @@ fn edit(identity_file: &Path, store_dir: &Path, name: String) -> Result<(), Box<
 
     // decrypt if it exists
     let old_content = if agefile.is_file() {
-        let mut reader = decrypt_password(identity_file, &mut vec![], &agefile)?;
+        let mut reader = decrypt_password(&unlock_identity(identity_file)?, &agefile)?;
         let mut old_content = vec![];
         reader.read_to_end(&mut old_content)?;
         File::create(&tmpfile_txt)?.write_all(&old_content)?;
@@ -879,7 +931,7 @@ fn edit(identity_file: &Path, store_dir: &Path, name: String) -> Result<(), Box<
 
     // encrypt
     encrypt_password(
-        &canon_store_dir.join(".recipients"),
+        &get_recipients(&canon_store_dir.join(".recipients"))?,
         File::open(tmpfile_txt)?,
         &agefile,
     )?;
@@ -907,12 +959,7 @@ fn edit(identity_file: &Path, store_dir: &Path, name: String) -> Result<(), Box<
                 .display(),
             editor.to_str().unwrap()
         );
-        Command::new("git")
-            .arg("-C")
-            .arg(canon_store_dir)
-            .args(["commit", "-m", &message])
-            .status()?
-            .exit_ok()?;
+        git_commit(canon_store_dir, &message)?;
     }
     Ok(())
 }
@@ -1023,7 +1070,7 @@ fn show(
         return Ok(());
     }
 
-    let mut reader = decrypt_password(identity_file, &mut vec![], &agefile)?;
+    let mut reader = decrypt_password(&unlock_identity(identity_file)?, &agefile)?;
     let mut output = String::new();
     reader.read_to_string(&mut output)?;
     let mut _otp = String::new();
@@ -1216,12 +1263,7 @@ fn move_name(
             old_canon_name.strip_prefix(canon_store_dir)?.display(),
             new_canon_name.strip_prefix(canon_store_dir)?.display()
         );
-        Command::new("git")
-            .arg("-C")
-            .arg(canon_store_dir)
-            .args(["commit", "-m", &message])
-            .status()?
-            .exit_ok()?;
+        git_commit(canon_store_dir, &message)?;
     }
     Ok(())
 }
@@ -1269,12 +1311,7 @@ fn remove(
             "Remove {}",
             canon_name.strip_prefix(canon_store_dir)?.display()
         );
-        Command::new("git")
-            .arg("-C")
-            .arg(canon_store_dir)
-            .args(["commit", "-m", &message])
-            .status()?
-            .exit_ok()?;
+        git_commit(canon_store_dir, &message)?;
     }
     Ok(())
 }
@@ -1282,9 +1319,8 @@ fn remove(
 // returns whether git is used
 fn reencrypt(identity_file: &Path) -> Result<bool, Box<dyn Error>> {
     fn reencrypt_recursive(
-        identity_file: &Path,
-        recipients_dir: &Path,
-        identities: &mut Vec<Box<dyn age::Identity>>,
+        identities: &[Box<dyn age::Identity>],
+        recipients: &[Box<dyn RecipientClone>],
         cur_dir: &Path,
         collect: &mut Vec<PathBuf>,
     ) -> Result<(), Box<dyn Error>> {
@@ -1301,32 +1337,24 @@ fn reencrypt(identity_file: &Path) -> Result<bool, Box<dyn Error>> {
             let filetype = entry.file_type().unwrap();
             let entry_path = entry.path();
             if filetype.is_dir() {
-                reencrypt_recursive(
-                    identity_file,
-                    recipients_dir,
-                    identities,
-                    &entry_path,
-                    collect,
-                )?;
+                reencrypt_recursive(identities, recipients, &entry_path, collect)?;
                 continue;
             } else if !filetype.is_file() || entry_path.extension() != Some(OsStr::new("age")) {
                 continue;
             }
 
             let mut content = vec![];
-            decrypt_password(identity_file, identities, &entry_path)?.read_to_end(&mut content)?;
-            encrypt_password(recipients_dir, &content[..], &entry_path)?;
+            decrypt_password(identities, &entry_path)?.read_to_end(&mut content)?;
+            encrypt_password(recipients, &content[..], &entry_path)?;
             collect.push(entry_path);
         }
         Ok(())
     }
 
     let mut collect = vec![];
-    let mut identities = vec![];
     reencrypt_recursive(
-        identity_file,
-        &identity_file.parent().unwrap().join(".recipients"),
-        &mut identities,
+        &unlock_identity(identity_file)?,
+        &get_recipients(&identity_file.parent().unwrap().join(".recipients"))?,
         identity_file.parent().unwrap(),
         &mut collect,
     )?;
@@ -1387,13 +1415,18 @@ fn add_recipient(
     let new_public_key_without_comment = public_key_without_comment(&public_key);
 
     // check if public_key is not already a recipient
+    // TODO:    - Actually check this directory recursively
+    //          - Would be nice to use an iterator for going through the recipients and also use
+    //            this for the get_recipients function
+    //          - Would be nice to compare the Stanzas instead of the string representation. Maybe
+    //            this way we could get rid of the public_key_without_comment function
     for recipient in recipients_dir
         .read_dir()?
         .filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_file())
     {
         let content = fs::read_to_string(recipient.as_ref().unwrap().path())?;
         for (i, line) in content.lines().enumerate() {
-            if line.trim_start().starts_with('#') {
+            if line.trim_start().starts_with('#') || line.trim().is_empty() {
                 continue;
             }
             if new_public_key_without_comment == public_key_without_comment(line) {
@@ -1423,20 +1456,16 @@ fn add_recipient(
     write!(recipients_file_handle, "# {}\n{}\n", &alias, &public_key)?;
 
     if reencrypt(identity_file)? {
+        let canon_store_dir = identity_file.parent().unwrap();
         Command::new("git")
             .arg("-C")
-            .arg(identity_file.parent().unwrap())
+            .arg(&canon_store_dir)
             .arg("add")
             .arg(&recipients_file)
             .status()?
             .exit_ok()?;
         let message = format!("Reencrypted store for {}", &alias);
-        Command::new("git")
-            .arg("-C")
-            .arg(identity_file.parent().unwrap())
-            .args(["commit", "-m", &message])
-            .status()?
-            .exit_ok()?;
+        git_commit(&canon_store_dir, &message)?;
     }
     Ok(())
 }
@@ -1734,12 +1763,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         CliCommand::Reencrypt => {
             if reencrypt(&canonicalised_identity_file)? {
-                Command::new("git")
-                    .arg("-C")
-                    .arg(&store_dir)
-                    .args(["commit", "-m", "Reencrypted store"])
-                    .status()?
-                    .exit_ok()?;
+                git_commit(&store_dir, "Reencrypted store")?;
             }
             Ok(())
         }
