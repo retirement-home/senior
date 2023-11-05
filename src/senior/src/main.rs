@@ -20,7 +20,6 @@ use clap::Parser;
 use interprocess::local_socket::{LocalSocketStream, NameTypeSupport};
 use sysinfo::{System, SystemExt};
 use tempdir::TempDir;
-use which::which;
 
 use cli::{Cli, CliCommand};
 
@@ -60,19 +59,22 @@ fn get_display_server() -> DisplayServer {
     } else if env::var_os("DISPLAY").is_some() {
         return DisplayServer::X11;
     // Darwin
-    } else if which::which("uname").is_ok()
-        && std::str::from_utf8(
-            &Command::new("uname")
-                .output()
-                .expect("Could not run `uname`!")
-                .stdout,
-        )
-        .expect("Could not convert output of `uname` to UTF8!")
-            == "Darwin"
-    {
-        return DisplayServer::Darwin;
+    } else {
+        match Command::new("uname").output() {
+            Err(e) if e.kind() == ErrorKind::NotFound => {}
+            Err(e) => panic!("Cannot run uname: {}", e),
+            Ok(o) => {
+                if std::str::from_utf8(&o.stdout)
+                    .expect("Cannot convert output of `uname` to UTF8!")
+                    == "Darwin"
+                {
+                    return DisplayServer::Darwin;
+                }
+            }
+        }
+    }
     // Termux
-    } else if let Some(v) = env::var_os("PREFIX") {
+    if let Some(v) = env::var_os("PREFIX") {
         if v.into_string().unwrap().contains("termux") {
             return DisplayServer::Termux;
         }
@@ -123,14 +125,18 @@ fn agent_set_passphrase(key: &str, passphrase: &str) -> Result<(), Box<dyn Error
         match LocalSocketStream::connect(agent_socket_name()) {
             Err(e) if once && !agent_is_running && e.kind() == io::ErrorKind::ConnectionRefused => {
                 once = false;
-                if which::which("senior-agent").is_err() {
-                    eprintln!("Warning: Cannot find senior-agent!");
-                    return Ok(());
-                }
-                let child = Command::new("senior-agent")
+                let child = match Command::new("senior-agent")
                     .stdin(Stdio::null())
                     .stdout(Stdio::piped())
-                    .spawn()?;
+                    .spawn()
+                {
+                    Err(e) if e.kind() == ErrorKind::NotFound => {
+                        eprintln!("Warning: Cannot find senior-agent!");
+                        return Ok(());
+                    }
+                    Err(e) => return Err(e.into()),
+                    Ok(c) => c,
+                };
                 let mut child_stdout = String::new();
                 BufReader::new(child.stdout.unwrap()).read_line(&mut child_stdout)?;
                 child_stdout.pop();
@@ -430,8 +436,9 @@ fn init_helper(
     let recipient_alias = recipient_alias.unwrap_or_else(|| {
         env::var_os("USER")
             .unwrap_or_else(|| {
-                env::var_os("USERNAME")
-                    .expect("Could not get the username. Please manually supply a recipient-alias.")
+                env::var_os("USERNAME").expect(
+                    "Cannot not get the username! Please manually supply a recipient-alias.",
+                )
             })
             .into_string()
             .unwrap()
@@ -473,13 +480,13 @@ fn init(
 }
 
 fn format_cmd(cmd: &[&str]) -> String {
-    let chars_who_need_to_be_escaped = [
+    let chars_which_need_to_be_escaped = [
         '`', '!', '#', '$', '^', '&', '*', '(', ')', '{', '}', '|', '[', ']', '\\', ';', '\'', '"',
         ',', '<', '>', '?', ' ',
     ];
     let mut s = String::new();
     for arg in cmd {
-        if chars_who_need_to_be_escaped
+        if chars_which_need_to_be_escaped
             .iter()
             .any(|&c| arg.contains(c))
         {
@@ -698,11 +705,24 @@ fn unlock(identity_file: &Path, check: bool) -> Result<(), Box<dyn Error>> {
     }
 }
 
-fn get_editor() -> (OsString, Vec<&'static str>) {
-    let mut editors = ["nvim", "vim", "emacs", "nano", "vi"].into_iter();
+fn edit_file_with_editor(path: &Path) -> Result<String, Box<dyn Error>> {
+    let mut editor_env_set = false;
+    let mut editors = vec![];
+    if let Some(editor) = env::var_os("EDITOR") {
+        editors.push(editor.into_string().unwrap());
+        editor_env_set = true;
+    }
+    for editor in ["nvim", "vim", "emacs", "nano", "vi"] {
+        if let Some(e) = editors.first() {
+            if editor == e {
+                continue;
+            }
+        }
+        editors.push(editor.to_string());
+    }
     let mut editor_args = HashMap::new();
     editor_args.insert(
-        "nvim",
+        String::from("nvim"),
         vec![
             "-c",
             ":setlocal noswapfile nobackup nowritebackup noundofile shada=\"\"",
@@ -711,24 +731,27 @@ fn get_editor() -> (OsString, Vec<&'static str>) {
         ],
     );
     editor_args.insert(
-        "vim",
+        String::from("vim"),
         vec![
             "-c",
             ":setlocal noswapfile nobackup nowritebackup noundofile viminfo=\"\"",
         ],
     );
-    let editor = env::var_os("EDITOR").unwrap_or_else(|| loop {
-        let candidate = editors
-            .next()
-            .expect("Cannot find editor! Please set the EDITOR environment variable.");
-        if which(candidate).is_ok() {
-            break OsString::from(candidate);
+    for editor in &editors {
+        let args = editor_args.remove(editor).unwrap_or(vec![]);
+        match Command::new(editor).args(args).arg(path).status() {
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                if editor_env_set {
+                    eprintln!("EDITOR set to {0}, but cannot start {0}!", editor);
+                    editor_env_set = false
+                }
+                continue;
+            }
+            Err(e) => return Err(e.into()),
+            Ok(s) => return s.exit_ok().map(|()| editor.to_string()),
         }
-    });
-    let args = editor_args
-        .remove(editor.to_str().unwrap())
-        .unwrap_or(vec![]);
-    (editor, args)
+    }
+    Err(format!("Please set the EDITOR environment variable to an installed editor! Cannot start any of the following editors: {:?}", editors).into())
 }
 
 // This is a helper trait to make the dynamic trait age::Recipient cloneable
@@ -797,7 +820,7 @@ fn get_recipients_recursive(
                 }
                 let recipient = recipient_from_str(&line).map_err(|e| -> Box<dyn Error> {
                     format!(
-                        "Could not process the recipient in {}:{}! {}",
+                        "Cannot process the recipient in {}:{}! {}",
                         child.display(),
                         i + 1,
                         e
@@ -842,20 +865,18 @@ fn encrypt_password(
 }
 
 fn check_for_git(canon_store_dir: &Path) -> bool {
-    which::which("git").map_or_else(
-        |_| false,
-        |v| {
-            Command::new(v)
-                .arg("-C")
-                .arg(canon_store_dir)
-                .arg("rev-parse")
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .status()
-                .expect("Could not run git rev-parse!")
-                .success()
-        },
-    )
+    match Command::new("git")
+        .arg("-C")
+        .arg(canon_store_dir)
+        .arg("rev-parse")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .status()
+    {
+        Err(e) if e.kind() == ErrorKind::NotFound => false,
+        Err(e) => panic!("Cannot run git rev-parse! {}", e),
+        Ok(s) => s.success(),
+    }
 }
 
 // use /dev/shm/ if available
@@ -907,12 +928,7 @@ fn edit(identity_file: &Path, store_dir: &Path, name: String) -> Result<(), Box<
     };
 
     // edit
-    let (editor, args) = get_editor();
-    Command::new(&editor)
-        .args(args)
-        .arg(&tmpfile_txt)
-        .status()?
-        .exit_ok()?;
+    let editor = edit_file_with_editor(&tmpfile_txt)?;
 
     // compare
     if !tmpfile_txt.exists() {
@@ -957,7 +973,7 @@ fn edit(identity_file: &Path, store_dir: &Path, name: String) -> Result<(), Box<
                 .with_extension("")
                 .strip_prefix(canon_store_dir)?
                 .display(),
-            editor.to_str().unwrap()
+            editor
         );
         git_commit(canon_store_dir, &message)?;
     }
@@ -1124,41 +1140,48 @@ fn show(
     // TODO: support Windows
     if clip {
         match get_display_server() {
-            DisplayServer::Wayland => Command::new("wl-copy")
-                .args(["-o", to_clip])
-                .status()?
-                .exit_ok()?,
+            DisplayServer::Wayland => {
+                match Command::new("wl-copy").args(["-o", to_clip]).status() {
+                    Err(e) if e.kind() == ErrorKind::NotFound => return Err("Using Wayland, but cannot run wl-copy! Please install wl-clipboard!".into()),
+                    Err(e) => return Err(e.into()),
+                    Ok(s) => s.exit_ok()?,
+                }
+            }
             DisplayServer::X11 => {
-                let mut xclip = Command::new("xclip").stdin(Stdio::piped()).spawn()?;
-                xclip.stdin.take().unwrap().write_all(to_clip.as_bytes())?;
-                xclip.wait()?.exit_ok()?;
+                match Command::new("xclip").stdin(Stdio::piped()).spawn() {
+                    Err(e) if e.kind() == ErrorKind::NotFound => return Err("Using X11, but cannot run xclip! Please install xclip!".into()),
+                    Err(e) => return Err(e.into()),
+                    Ok(mut c) => {
+                        c.stdin.as_mut().unwrap().write_all(to_clip.as_bytes())?;
+                        c.wait()?.exit_ok()?;
+                    },
+                }
             }
             DisplayServer::Termux => {
-                if which::which("termux-clipboard-set").is_err() {
-                    return Err("Please install Termux:API (https://f-droid.org/en/packages/com.termux.api/) and `pkg install termux-api`!".into());
-                } else {
-                    Command::new("termux-clipboard-set")
-                        .arg(to_clip)
-                        .status()?
-                        .exit_ok()?;
+                match Command::new("termux-clipboard-set").arg(to_clip).status() {
+                    Err(e) if e.kind() == ErrorKind::NotFound => return Err("Please install Termux:API (https://f-droid.org/en/packages/com.termux.api/) and `pkg install termux-api`!".into()),
+                    Err(e) => return Err(e.into()),
+                    Ok(s) => s.exit_ok()?,
                 }
             }
             DisplayServer::Wsl => {
-                if which::which("clip.exe").is_err() {
-                    return Err("I think we are in WSL, but I cannot find clip.exe!".into());
-                } else {
-                    let child = Command::new("clip.exe").stdin(Stdio::piped()).spawn()?;
-                    let mut stdin_writer = child.stdin.unwrap();
-                    stdin_writer.write_all(to_clip.as_bytes())?;
+                match Command::new("clip.exe").stdin(Stdio::piped()).spawn() {
+                    Err(e) if e.kind() == ErrorKind::NotFound => return Err("Using WSL, but cannot run clip.exe!".into()),
+                    Err(e) => return Err(e.into()),
+                    Ok(mut c) => {
+                        c.stdin.as_mut().unwrap().write_all(to_clip.as_bytes())?;
+                        c.wait()?.exit_ok()?;
+                    },
                 }
             }
             DisplayServer::Darwin => {
-                if which::which("pbcopy").is_err() {
-                    return Err("I think we are on Darwin (macOS), but I cannot find pbcopy!".into());
-                } else {
-                    let child = Command::new("pbcopy").stdin(Stdio::piped()).spawn()?;
-                    let mut stdin_writer = child.stdin.unwrap();
-                    stdin_writer.write_all(to_clip.as_bytes())?;
+                match Command::new("pbcopy").stdin(Stdio::piped()).spawn() {
+                    Err(e) if e.kind() == ErrorKind::NotFound => return Err("Using Darwin (macOS), but cannot find pbcopy!".into()),
+                    Err(e) => return Err(e.into()),
+                    Ok(mut c) => {
+                        c.stdin.as_mut().unwrap().write_all(to_clip.as_bytes())?;
+                        c.wait()?.exit_ok()?;
+                    }
                 }
             }
             _ => {
@@ -1459,13 +1482,13 @@ fn add_recipient(
         let canon_store_dir = identity_file.parent().unwrap();
         Command::new("git")
             .arg("-C")
-            .arg(&canon_store_dir)
+            .arg(canon_store_dir)
             .arg("add")
             .arg(&recipients_file)
             .status()?
             .exit_ok()?;
         let message = format!("Reencrypted store for {}", &alias);
-        git_commit(&canon_store_dir, &message)?;
+        git_commit(canon_store_dir, &message)?;
     }
     Ok(())
 }
@@ -1620,7 +1643,7 @@ fn get_canonicalised_identity_file(
     .iter();
     loop {
         let candidate = canon_store.join(identity_filenames.next().ok_or(format!(
-            "Cannot not find any identity file in store {}!",
+            "Cannot find any identity file in store {}!",
             canon_store.display()
         ))?);
         if candidate.is_file() || candidate.is_symlink() {
