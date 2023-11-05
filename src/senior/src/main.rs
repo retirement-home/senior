@@ -8,6 +8,7 @@ use std::error::Error;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, ErrorKind, Read, Write};
+use std::iter::Enumerate;
 use std::path::{Path, PathBuf};
 use std::process::{ChildStdout, Command, ExitStatus, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -20,6 +21,7 @@ use clap::Parser;
 use interprocess::local_socket::{LocalSocketStream, NameTypeSupport};
 use sysinfo::{System, SystemExt};
 use tempdir::TempDir;
+use walkdir::WalkDir;
 
 use cli::{Cli, CliCommand};
 
@@ -254,7 +256,7 @@ fn ask_passphrase_twice() -> std::io::Result<String> {
 }
 
 // returns the public key
-fn setup_identity(store_dir: &Path, identity: Option<String>) -> Result<String, Box<dyn Error>> {
+fn setup_identity(store_dir: &Path, identity: &Option<String>) -> Result<String, Box<dyn Error>> {
     match identity {
         None => {
             let passphrase = ask_passphrase_twice()?;
@@ -436,15 +438,14 @@ fn init_helper(
     let recipient_alias = recipient_alias.unwrap_or_else(|| {
         env::var_os("USER")
             .unwrap_or_else(|| {
-                env::var_os("USERNAME").expect(
-                    "Cannot not get the username! Please manually supply a recipient-alias.",
-                )
+                env::var_os("USERNAME")
+                    .expect("Cannot get the username! Please manually supply a recipient-alias.")
             })
             .into_string()
             .unwrap()
     });
 
-    let pubkey = setup_identity(store_dir, identity)?;
+    let pubkey = setup_identity(store_dir, &identity)?;
 
     let recipients_dir = store_dir.join(".recipients");
     let recipients_main = recipients_dir.join("main.txt");
@@ -477,6 +478,46 @@ fn init(
         }
         Ok(()) => Ok(()),
     }
+}
+
+// returns Some("<filepath>:<linenumber>") if pubkey is already present
+fn find_pubkey_in_recipients(recipients_dir: &Path, pubkey: &str) -> Option<String> {
+    // removes the comment from ssh-keys
+    // ssh keys look like this:
+    // ssh-<ed25519|rsa> <the-actual-key> <comment>
+    // To check if a key is already present we want to ignore the comment line
+    fn public_key_without_comment(public_key: &str) -> &str {
+        if public_key.starts_with("ssh-") {
+            let mut space_indices = public_key.match_indices(' ').take(2);
+            // there should always be at least one space in an ssh public key
+            assert!(
+                space_indices.next().is_some(),
+                "There is no space in this ssh key! {}",
+                public_key
+            );
+            match space_indices.next() {
+                // no comment => return entire string
+                None => public_key,
+                // there is a comment => return string up to the comment
+                Some((i, _)) => &public_key[0..i],
+            }
+        } else {
+            public_key
+        }
+    }
+
+    let pubkey_without_comment = public_key_without_comment(pubkey);
+
+    // TODO?: - Would be nice to compare the Stanzas instead of the string representation. Maybe
+    //          this way we could get rid of the public_key_without_comment function
+    for (recipient_without_comment, filepos) in RecipientStrIter::new(recipients_dir)
+        .map(|(pubkey, filepos)| (public_key_without_comment(&pubkey).to_owned(), filepos))
+    {
+        if recipient_without_comment == pubkey_without_comment {
+            return Some(filepos);
+        }
+    }
+    None
 }
 
 fn format_cmd(cmd: &[&str]) -> String {
@@ -512,11 +553,21 @@ fn git_clone_helper(
         .arg(store_dir)
         .status()?
         .exit_ok()?;
-    let pubkey = setup_identity(store_dir, identity)?;
-    // TODO: Check if pubkey is already a recipient
+    let pubkey = setup_identity(store_dir, &identity)?;
+
+    if identity.is_some() {
+        if let Some(filepos) = find_pubkey_in_recipients(&store_dir.join(".recipients"), &pubkey) {
+            println!(
+                "The public key of the supplied identity file is already a recipient in {}.",
+                filepos
+            );
+            println!("You should be able to decrypt passwords now.");
+            return Ok(());
+        }
+    }
 
     let recipient_alias = env::var_os("USER").unwrap_or(OsString::from("<name of recipient>"));
-    println!("Tell an owner of the store to add you to the recipients. For this they should run the following command:");
+    println!("Tell an owner of the store to add you to the recipients! For this they should run the following command:");
     println!(
         "{}",
         format_cmd(&[
@@ -802,60 +853,76 @@ fn recipient_from_str(line: &str) -> Result<Box<dyn RecipientClone>, Box<dyn Err
     }
 }
 
-// Recursively read the textfiles in dir and save the recipients into the supplied vector
-fn get_recipients_recursive(
-    dir: &Path,
-    recipients: &mut Vec<Box<dyn RecipientClone>>,
-) -> Result<(), Box<dyn Error>> {
-    for child in dir.read_dir()? {
-        let child = child?.path().canonicalize()?;
-        if child.is_dir() {
-            get_recipients_recursive(&child, recipients)?;
-        } else if child.is_file() {
-            let reader = BufReader::new(File::open(&child)?);
-            for (i, line) in reader.lines().enumerate() {
-                let line = line?;
-                if line.trim_start().starts_with('#') || line.trim().is_empty() {
-                    continue;
-                }
-                let recipient = recipient_from_str(&line).map_err(|e| -> Box<dyn Error> {
-                    format!(
-                        "Cannot process the recipient in {}:{}! {}",
-                        child.display(),
-                        i + 1,
-                        e
-                    )
-                    .into()
-                })?;
-                recipients.push(recipient);
-            }
-        } else {
-            panic!(
-                "{} unsupported file type! {:?}",
-                child.display(),
-                child.metadata()?.file_type()
-            );
-        }
-    }
-    Ok(())
+struct RecipientStrIter {
+    walkdir: walkdir::IntoIter,
+    line_iter: Option<Enumerate<io::Lines<BufReader<File>>>>,
+    cur_file: PathBuf,
 }
 
-// Use get_recipients_recursive(recipient_dir) to collect all recipients and return the vector
-fn get_recipients(recipient_dir: &Path) -> Result<Vec<Box<dyn RecipientClone>>, Box<dyn Error>> {
-    let mut recipients = vec![];
-    get_recipients_recursive(recipient_dir, &mut recipients)?;
-    Ok(recipients)
+impl RecipientStrIter {
+    fn new(recipients_dir: &Path) -> Self {
+        RecipientStrIter {
+            walkdir: WalkDir::new(recipients_dir).into_iter(),
+            line_iter: None,
+            cur_file: PathBuf::new(),
+        }
+    }
+}
+
+impl Iterator for RecipientStrIter {
+    // returns a tuple: (the line with the recipient's public key, <path>:<linenumber>)
+    type Item = (String, String);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.line_iter.is_none() {
+                self.cur_file = loop {
+                    let entry = self
+                        .walkdir
+                        .next()?
+                        .expect("Cannot unwrap DirEntry for recipients!")
+                        .into_path();
+                    if !entry.is_file() {
+                        continue;
+                    }
+                    break entry;
+                };
+                let reader =
+                    BufReader::new(File::open(&self.cur_file).unwrap_or_else(|_| {
+                        panic!("Cannot open file {}!", self.cur_file.display())
+                    }));
+                self.line_iter = Some(reader.lines().enumerate());
+            }
+            let next_line = loop {
+                match self.line_iter.as_mut().unwrap().next() {
+                    None => break None,
+                    Some((i, line)) => {
+                        let filepos = format!("{}:{}", self.cur_file.display(), i + 1);
+                        let line =
+                            line.unwrap_or_else(|_| panic!("Cannot read line {}!", &filepos));
+                        if line.trim_start().starts_with('#') || line.trim().is_empty() {
+                            continue;
+                        }
+                        break Some((line, filepos));
+                    }
+                }
+            };
+            if next_line.is_none() {
+                self.line_iter = None;
+                continue;
+            }
+            break next_line;
+        }
+    }
 }
 
 // encrypts the contents of source into target_file
 fn encrypt_password(
-    recipients: &[Box<dyn RecipientClone>],
+    recipients: Vec<Box<dyn age::Recipient + Send>>,
     mut source: impl Read,
     target_file: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    let encryptor =
-        age::Encryptor::with_recipients(recipients.iter().map(|r| r.to_recipient()).collect())
-            .ok_or("No recipients supplied!")?;
+    let encryptor = age::Encryptor::with_recipients(recipients).ok_or("No recipients supplied!")?;
     let mut writer = encryptor.wrap_output(File::create(target_file)?)?;
     let mut content = vec![];
     source.read_to_end(&mut content)?;
@@ -947,7 +1014,13 @@ fn edit(identity_file: &Path, store_dir: &Path, name: String) -> Result<(), Box<
 
     // encrypt
     encrypt_password(
-        &get_recipients(&canon_store_dir.join(".recipients"))?,
+        RecipientStrIter::new(&canon_store_dir.join(".recipients"))
+            .map(|(pubkey_str, pathpos)| {
+                recipient_from_str(&pubkey_str)
+                    .unwrap_or_else(|_| panic!("Cannot process {}!", pathpos))
+                    .to_recipient()
+            })
+            .collect(),
         File::open(tmpfile_txt)?,
         &agefile,
     )?;
@@ -1368,16 +1441,27 @@ fn reencrypt(identity_file: &Path) -> Result<bool, Box<dyn Error>> {
 
             let mut content = vec![];
             decrypt_password(identities, &entry_path)?.read_to_end(&mut content)?;
-            encrypt_password(recipients, &content[..], &entry_path)?;
+            encrypt_password(
+                recipients.iter().map(|r| r.to_recipient()).collect(),
+                &content[..],
+                &entry_path,
+            )?;
             collect.push(entry_path);
         }
         Ok(())
     }
 
     let mut collect = vec![];
+    let recipient_clone_list: Vec<Box<dyn RecipientClone>> =
+        RecipientStrIter::new(&identity_file.parent().unwrap().join(".recipients"))
+            .map(|(pubkey_str, pathpos)| {
+                recipient_from_str(&pubkey_str)
+                    .unwrap_or_else(|_| panic!("Cannot process {}!", pathpos))
+            })
+            .collect();
     reencrypt_recursive(
         &unlock_identity(identity_file)?,
-        &get_recipients(&identity_file.parent().unwrap().join(".recipients"))?,
+        &recipient_clone_list,
         identity_file.parent().unwrap(),
         &mut collect,
     )?;
@@ -1401,31 +1485,6 @@ fn add_recipient(
     public_key: String,
     alias: String,
 ) -> Result<(), Box<dyn Error>> {
-    // removes the comment from ssh-keys
-    // ssh keys look like this:
-    // ssh-<ed25519|rsa> <the-actual-key> <comment>
-    // To check if a key is already present we want to ignore the comment line
-    fn public_key_without_comment(public_key: &str) -> &str {
-        if public_key.starts_with("ssh-") {
-            let mut space_indices = public_key.match_indices(' ').take(2);
-            // there should always be at least one space in an ssh public key
-            assert!(
-                space_indices.next().is_some(),
-                "There is no space in this ssh key! {}",
-                public_key
-            );
-            match space_indices.next() {
-                // no comment => return entire string
-                None => public_key,
-                // there is a comment => return string up to the comment
-                Some((i, _)) => &public_key[0..i],
-            }
-        } else {
-            public_key
-        }
-        .trim()
-    }
-
     if let Err(e) = recipient_from_str(&public_key) {
         return Err(format!(
             "The supplied recipient is not a valid age or ssh public key! {}",
@@ -1435,32 +1494,10 @@ fn add_recipient(
     }
 
     let recipients_dir = identity_file.parent().unwrap().join(".recipients");
-    let new_public_key_without_comment = public_key_without_comment(&public_key);
 
     // check if public_key is not already a recipient
-    // TODO:    - Actually check this directory recursively
-    //          - Would be nice to use an iterator for going through the recipients and also use
-    //            this for the get_recipients function
-    //          - Would be nice to compare the Stanzas instead of the string representation. Maybe
-    //            this way we could get rid of the public_key_without_comment function
-    for recipient in recipients_dir
-        .read_dir()?
-        .filter(|entry| entry.as_ref().unwrap().file_type().unwrap().is_file())
-    {
-        let content = fs::read_to_string(recipient.as_ref().unwrap().path())?;
-        for (i, line) in content.lines().enumerate() {
-            if line.trim_start().starts_with('#') || line.trim().is_empty() {
-                continue;
-            }
-            if new_public_key_without_comment == public_key_without_comment(line) {
-                return Err(format!(
-                    "Recipient already in {}:{}",
-                    recipient.unwrap().path().display(),
-                    i + 1
-                )
-                .into());
-            }
-        }
+    if let Some(filepos) = find_pubkey_in_recipients(&recipients_dir, public_key.trim()) {
+        return Err(format!("Recipient already in {}!", filepos).into());
     }
 
     // choose the only existing file or use main.txt
@@ -1785,6 +1822,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             add_recipient(&canonicalised_identity_file, public_key, alias)
         }
         CliCommand::Reencrypt => {
+            // TODO: By default, only reencrypt files where the recipients do not match the
+            //       current ones
             if reencrypt(&canonicalised_identity_file)? {
                 git_commit(&store_dir, "Reencrypted store")?;
             }
