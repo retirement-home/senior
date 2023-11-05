@@ -314,7 +314,7 @@ fn setup_identity(store_dir: &Path, identity: &Option<String>) -> Result<String,
                             });
                             fs::create_dir_all(store_dir)?;
                             if use_passphrase {
-                                let mut keyfile_handle = File::open(&keyfile)?;
+                                let mut keyfile_handle = File::open(keyfile)?;
                                 let mut keyfile_content = vec![];
                                 keyfile_handle.read_to_end(&mut keyfile_content)?;
                                 let encryptor =
@@ -324,7 +324,7 @@ fn setup_identity(store_dir: &Path, identity: &Option<String>) -> Result<String,
                                 write_to.write_all(&keyfile_content)?;
                                 write_to.finish()?;
                             } else {
-                                fs::copy(&keyfile, identity_file)?;
+                                fs::copy(keyfile, identity_file)?;
                             }
                             Ok(i.to_public().to_string())
                         }
@@ -335,7 +335,7 @@ fn setup_identity(store_dir: &Path, identity: &Option<String>) -> Result<String,
                     // 1. encrypted ssh key
                     // 2. unencrypted ssh key
                     // 3. encrypted age file
-                    let mut keyfile_bufread = BufReader::new(File::open(&keyfile)?);
+                    let mut keyfile_bufread = BufReader::new(File::open(keyfile)?);
                     match ssh::Identity::from_buffer(
                         &mut keyfile_bufread,
                         Some(keyfile.to_string()),
@@ -352,7 +352,7 @@ fn setup_identity(store_dir: &Path, identity: &Option<String>) -> Result<String,
                                     // remove newline
                                     keygen_command.stdout.pop();
                                     fs::create_dir_all(store_dir)?;
-                                    fs::copy(&keyfile, store_dir.join(".identity.pass.ssh"))?;
+                                    fs::copy(keyfile, store_dir.join(".identity.pass.ssh"))?;
                                     break Ok(String::from_utf8(keygen_command.stdout)?);
                                 } else {
                                     eprintln!("Could not produce public key! Is the passphrase correct? Please try again.");
@@ -374,7 +374,7 @@ fn setup_identity(store_dir: &Path, identity: &Option<String>) -> Result<String,
                                     ".identity.ssh"
                                 });
                                 fs::create_dir_all(store_dir)?;
-                                fs::copy(&keyfile, &identity_file)?;
+                                fs::copy(keyfile, &identity_file)?;
                                 if use_passphrase {
                                     Command::new("ssh-keygen")
                                         .args(["-p", "-f"])
@@ -393,7 +393,7 @@ fn setup_identity(store_dir: &Path, identity: &Option<String>) -> Result<String,
                         },
                         Err(_) => loop {
                             // encrypted age file, hopefully
-                            let decryptor = match age::Decryptor::new(File::open(&keyfile)?)? {
+                            let decryptor = match age::Decryptor::new(File::open(keyfile)?)? {
                                 age::Decryptor::Passphrase(d) => d,
                                 _ => return Err("The supplied identity file should be encrypted with a passphrase, not with recipients/identities!".into()),
                             };
@@ -419,7 +419,7 @@ fn setup_identity(store_dir: &Path, identity: &Option<String>) -> Result<String,
                                     age::IdentityFileEntry::Native(i) => i.to_public().to_string(),
                                 };
                             fs::create_dir_all(store_dir)?;
-                            fs::copy(&keyfile, store_dir.join(".identity.age"))?;
+                            fs::copy(keyfile, store_dir.join(".identity.age"))?;
                             break Ok(pubkey);
                         },
                     }
