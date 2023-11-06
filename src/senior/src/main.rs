@@ -1684,7 +1684,7 @@ fn git_fetch(store_dir: &Path) -> bool {
 
 // This function does not fetch automatically!
 fn git_remote_is_ahead(store_dir: &Path) -> bool {
-    let mut git_remote = Command::new("git")
+    let git_remote = Command::new("git")
         .arg("-C")
         .arg(store_dir)
         .args(["remote", "show"])
@@ -1692,11 +1692,16 @@ fn git_remote_is_ahead(store_dir: &Path) -> bool {
         .stderr(Stdio::piped())
         .output()
         .expect("Cannot run `git remote show`!");
-    // remove trailing newline
-    git_remote.stdout.pop();
-    let git_remote = std::str::from_utf8(&git_remote.stdout)
-        .expect("Cannot convert output of `git remote show` to UTF-8!");
-    let mut git_local = Command::new("git")
+    let git_remote = match std::str::from_utf8(&git_remote.stdout)
+        .expect("Cannot convert output of `git remote show` to UTF-8!")
+        .lines()
+        .next()
+    {
+        // no remote branch => no need to worry
+        None => return false,
+        Some(l) => l,
+    };
+    let git_local = Command::new("git")
         .arg("-C")
         .arg(store_dir)
         .args(["branch", "--show-current"])
@@ -1705,9 +1710,11 @@ fn git_remote_is_ahead(store_dir: &Path) -> bool {
         .output()
         .expect("Cannot run `git branch --show-current`!");
     // remove trailing newline
-    git_local.stdout.pop();
     let git_local = std::str::from_utf8(&git_local.stdout)
-        .expect("Cannot convert output of `git branch --show-current` to UTF-8!");
+        .expect("Cannot convert output of `git branch --show-current` to UTF-8!")
+        .lines()
+        .next()
+        .expect("There should be a current branch!");
     let merge_base_cmd_str = format_cmd(&[
         "git",
         "merge-base",
