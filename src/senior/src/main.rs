@@ -10,8 +10,8 @@ use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, ErrorKind, Read, Write};
 use std::iter::Enumerate;
 use std::path::{Path, PathBuf};
-use std::process::{ChildStdout, Command, ExitStatus, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::process::{self, ChildStdout, Command, ExitStatus, Stdio};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{env, str::FromStr};
 
 use age::secrecy::{ExposeSecret, Secret};
@@ -508,8 +508,6 @@ fn find_pubkey_in_recipients(recipients_dir: &Path, pubkey: &str) -> Option<Stri
 
     let pubkey_without_comment = public_key_without_comment(pubkey);
 
-    // TODO?: - Would be nice to compare the Stanzas instead of the string representation. Maybe
-    //          this way we could get rid of the public_key_without_comment function
     for (recipient_without_comment, filepos) in RecipientStrIter::new(recipients_dir)
         .map(|(pubkey, filepos)| (public_key_without_comment(&pubkey).to_owned(), filepos))
     {
@@ -520,23 +518,29 @@ fn find_pubkey_in_recipients(recipients_dir: &Path, pubkey: &str) -> Option<Stri
     None
 }
 
-fn format_cmd(cmd: &[&str]) -> String {
+fn format_arg(arg: &str) -> String {
     let chars_which_need_to_be_escaped = [
         '`', '!', '#', '$', '^', '&', '*', '(', ')', '{', '}', '|', '[', ']', '\\', ';', '\'', '"',
         ',', '<', '>', '?', ' ',
     ];
     let mut s = String::new();
+    if chars_which_need_to_be_escaped
+        .iter()
+        .any(|&c| arg.contains(c))
+    {
+        s.push('"');
+        s.push_str(&arg.replace('"', "\\\""));
+        s.push('"');
+    } else {
+        s.push_str(arg);
+    }
+    s
+}
+
+fn format_cmd(cmd: &[&str]) -> String {
+    let mut s = String::new();
     for arg in cmd {
-        if chars_which_need_to_be_escaped
-            .iter()
-            .any(|&c| arg.contains(c))
-        {
-            s.push('"');
-            s.push_str(&arg.replace('"', "\\\""));
-            s.push('"');
-        } else {
-            s.push_str(arg);
-        }
+        s.push_str(&format_arg(arg));
         s.push(' ');
     }
     s.pop();
@@ -1653,6 +1657,147 @@ fn change_passphrase(identity_file: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// returns if the fetch was a success
+fn git_fetch(store_dir: &Path) -> bool {
+    eprintln!("git fetch...");
+
+    let mut fetch = Command::new("git")
+        .arg("-C")
+        .arg(store_dir)
+        .arg("fetch")
+        .spawn()
+        .expect("Cannot run `git fetch`!");
+    let start = Instant::now();
+    loop {
+        match fetch.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) => {
+                if Instant::now().duration_since(start).as_secs() > 15 {
+                    let _ = fetch.kill();
+                    return false;
+                }
+            }
+            Err(_) => return false,
+        }
+    }
+}
+
+// This function does not fetch automatically!
+fn git_remote_is_ahead(store_dir: &Path) -> bool {
+    let mut git_remote = Command::new("git")
+        .arg("-C")
+        .arg(store_dir)
+        .args(["remote", "show"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("Cannot run `git remote show`!");
+    // remove trailing newline
+    git_remote.stdout.pop();
+    let git_remote = std::str::from_utf8(&git_remote.stdout)
+        .expect("Cannot convert output of `git remote show` to UTF-8!");
+    let mut git_local = Command::new("git")
+        .arg("-C")
+        .arg(store_dir)
+        .args(["branch", "--show-current"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("Cannot run `git branch --show-current`!");
+    // remove trailing newline
+    git_local.stdout.pop();
+    let git_local = std::str::from_utf8(&git_local.stdout)
+        .expect("Cannot convert output of `git branch --show-current` to UTF-8!");
+    let merge_base_cmd_str = format_cmd(&[
+        "git",
+        "merge-base",
+        "--is-ancestor",
+        &git_remote,
+        &git_local,
+    ]);
+    match Command::new("git")
+        .arg("-C")
+        .arg(store_dir)
+        .args(["merge-base", "--is-ancestor"])
+        .args([git_remote, git_local])
+        .status()
+        .unwrap_or_else(|_| panic!("Cannot run `{}`!", &merge_base_cmd_str))
+        .code()
+        .unwrap()
+    {
+        0 => false,
+        1 => true,
+        _ => panic!("Error in `{}`!", &merge_base_cmd_str),
+    }
+}
+
+// Before reencrypting the entire store, check for possible merge conflicts
+fn warn_before_reencryption(store_dir: &Path, cli: &Cli) -> Result<(), Box<dyn Error>> {
+    fn continue_anyway() -> Result<bool, Box<dyn Error>> {
+        loop {
+            eprint!("Do you want to continue anyway? [y/N]: ");
+            io::stdout().flush()?;
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            input = input.trim().to_lowercase();
+            if input.is_empty() || input == "n" || input == "no" {
+                return Ok(false);
+            } else if input != "y" && input != "yes" {
+                eprintln!("Invalid input! Type either n (for no) or y (for yes).");
+                continue;
+            }
+            return Ok(true);
+        }
+    }
+
+    if !check_for_git(store_dir) {
+        return Ok(());
+    }
+
+    let mut senior_git_pull_cmd_str = String::from("senior");
+    if let Some(store_name) = cli.store.as_ref() {
+        senior_git_pull_cmd_str.push_str(" -s ");
+        senior_git_pull_cmd_str.push_str(&format_arg(store_name.to_str().unwrap()));
+    }
+    senior_git_pull_cmd_str.push_str(" git");
+    senior_git_pull_cmd_str.push_str(" pull");
+    let mut fetch_is_fresh = false;
+    loop {
+        // check without git fetch
+        if git_remote_is_ahead(store_dir) {
+            eprintln!("\nWARNING! The remote branch is ahead of your local branch! Reencrypting the entire store will almost certainly lead to merge conflicts!");
+            eprintln!(
+                "It is highly advised to do `{}` first!",
+                senior_git_pull_cmd_str
+            );
+            if continue_anyway()? {
+                return Ok(());
+            } else {
+                process::exit(0);
+            }
+        } else if fetch_is_fresh {
+            return Ok(());
+        // Safe on first sight? git fetch to be sure.
+        } else if !git_fetch(store_dir) {
+            // Could not git fetch. Probably no internet connection.
+            eprintln!("\nWARNING! Cannot `git fetch` right now. Reencrypting the entire store can lead to merge conflicts!");
+            eprintln!(
+                "It is highly advised to do `{}` first!",
+                senior_git_pull_cmd_str
+            );
+            if continue_anyway()? {
+                return Ok(());
+            } else {
+                process::exit(0);
+            }
+        // git fetch successful. Check again if remote is ahead
+        } else {
+            fetch_is_fresh = true;
+            continue;
+        }
+    }
+}
+
 fn get_canonicalised_identity_file(
     store_dir: &Path,
     name: &str,
@@ -1790,6 +1935,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     match cli.command {
+        CliCommand::AddRecipient { .. } | CliCommand::Reencrypt => {
+            warn_before_reencryption(&store_dir, &cli)?
+        }
+        _ => {}
+    }
+
+    match cli.command {
         CliCommand::Init {
             identity,
             recipient_alias,
@@ -1822,8 +1974,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             add_recipient(&canonicalised_identity_file, public_key, alias)
         }
         CliCommand::Reencrypt => {
-            // TODO: By default, only reencrypt files where the recipients do not match the
-            //       current ones
             if reencrypt(&canonicalised_identity_file)? {
                 git_commit(&store_dir, "Reencrypted store")?;
             }
