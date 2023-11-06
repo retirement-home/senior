@@ -24,6 +24,7 @@ install: build
 	mkdir -p $(shell dirname $(BASHCOMPLETION))
 	mkdir -p $(MANDIR)
 	cp $(RUSTDIR)/target/release/senior $(BINARY)
+	killall senior-agent || true # Ignore error
 	cp $(RUSTDIR)/target/release/senior-agent $(BINARYAGENT)
 	cp src/seniormenu $(BINARYMENU)
 	cp src/completions/senior.zsh $(ZSHCOMPLETION)
