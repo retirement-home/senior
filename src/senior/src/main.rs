@@ -1008,6 +1008,7 @@ fn edit(identity_file: &Path, store_dir: &Path, name: String) -> Result<(), Box<
     }
 
     let new_content = fs::read(&tmpfile_txt)?;
+    drop(tmp_dir);
     if old_content == new_content {
         eprintln!("Password unchanged.");
         return Ok(());
@@ -1025,10 +1026,9 @@ fn edit(identity_file: &Path, store_dir: &Path, name: String) -> Result<(), Box<
                     .to_recipient()
             })
             .collect(),
-        File::open(tmpfile_txt)?,
+        &new_content[..],
         &agefile,
     )?;
-    drop(tmp_dir);
 
     // git add/commit
     if check_for_git(canon_store_dir) {
