@@ -53,7 +53,7 @@ senior add-recipient "<PUBLIC KEY>" "<ALIAS>"
 ```
 
 ### Use an Existing Identity
-Both `senior create` and `senior clone` support the optional flag `-i <FILE>` or `--identity <FILE>`
+Both `senior init` and `senior clone` support the optional flag `-i <FILE>` or `--identity <FILE>`
 to use an existing identity instead of generating a new one.
 Supported are
 - Cleartext age identity
