@@ -1181,7 +1181,7 @@ fn show(
                 let mut lines = output.split('\n');
                 let value = loop {
                     let line = lines.next().ok_or(format!(
-                        "Cannot find key \"{}\" in password file {}!",
+                        "Cannot find key '{}' in password file {}!",
                         key,
                         agefile.display()
                     ))?;
