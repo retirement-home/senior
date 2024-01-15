@@ -19,7 +19,7 @@ use age::{self, ssh};
 use atty::Stream;
 use clap::Parser;
 use interprocess::local_socket::{LocalSocketStream, NameTypeSupport};
-use sysinfo::{System, SystemExt};
+use sysinfo::System;
 use tempdir::TempDir;
 use walkdir::WalkDir;
 
