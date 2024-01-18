@@ -72,10 +72,10 @@ The special key `otp` creates the one-time password from the otpauth-string.
 ```sh
 $ senior show example.com
 mysecretpassword
-login: myusername
+user: myusername
 otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example
 # use `-c` or `--clip` to also add it to the clipboard
-$ senior show -c -k login example.com
+$ senior show -c -k user example.com
 myusername
 $ senior show -k otp example.com
 118250
@@ -133,7 +133,7 @@ If only one store exists then this is the default store. Otherwise, `main` is th
 seniormenu [--menu <dmenu-wl>] [--dotool <ydotool>] [--type] [<key1> <key2> ...]
 ```
 seniormenu uses `dmenu-wl` or `dmenu` (can be changed with `--menu <othermenu>`) to let you select a password for the clipboard.
-You can provide a `<key>` to get another value from the password file (like login, email, ...).
+You can provide a `<key>` to get another value from the password file (like user, email, ...).
 
 With `--type` the password gets typed using [ydotool](https://github.com/ReimuNotMoe/ydotool) (for Wayland) / [xdotool](https://github.com/jordansissel/xdotool) (for X11). The default can be changed with `--dotool <otherdotool>`.
 
@@ -144,7 +144,7 @@ An example for sway/i3 is
 ```
 bindsym $mod+u exec seniormenu --menu bemenu --type
 bindsym $mod+y exec seniormenu --menu bemenu --type otp
-bindsym $mod+t exec seniormenu --menu bemenu --type login password
+bindsym $mod+t exec seniormenu --menu bemenu --type user password
 ```
 
 ### senior-agent
@@ -213,13 +213,13 @@ Let us look at a password:
 ```sh
 $ senior show gitlab.com
 mysupersafepassword
-login: myuser
+user: myusername
 ```
 The `show` command is equivalent to
 ```sh
 $ age -d -i .identity.age gitlab.com.age
 mysupersafepassword
-login: myuser
+user: myusername
 ```
 
 With `senior edit ...`, after editing the decrypted text file, it gets encrypted via
