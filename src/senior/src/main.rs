@@ -57,23 +57,23 @@ fn get_display_server() -> DisplayServer {
     // Wayland
     if env::var_os("WAYLAND_DISPLAY").is_some() {
         return DisplayServer::Wayland;
-    // X11
-    } else if env::var_os("DISPLAY").is_some() {
-        return DisplayServer::X11;
+    }
     // Darwin
-    } else {
-        match Command::new("uname").output() {
-            Err(e) if e.kind() == ErrorKind::NotFound => {}
-            Err(e) => panic!("Cannot run uname: {}", e),
-            Ok(o) => {
-                if std::str::from_utf8(&o.stdout)
-                    .expect("Cannot convert output of `uname` to UTF8!")
-                    == "Darwin"
-                {
-                    return DisplayServer::Darwin;
-                }
+    match Command::new("uname").output() {
+        Err(e) if e.kind() == ErrorKind::NotFound => {}
+        Err(e) => panic!("Cannot run uname: {}", e),
+        Ok(o) => {
+            if std::str::from_utf8(&o.stdout)
+                .expect("Cannot convert output of `uname` to UTF8!")
+                == "Darwin"
+            {
+                return DisplayServer::Darwin;
             }
         }
+    }
+    // X11
+    if env::var_os("DISPLAY").is_some() {
+        return DisplayServer::X11;
     }
     // Termux
     if let Some(v) = env::var_os("PREFIX") {
