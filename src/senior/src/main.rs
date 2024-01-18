@@ -65,6 +65,7 @@ fn get_display_server() -> DisplayServer {
         Ok(o) => {
             if std::str::from_utf8(&o.stdout)
                 .expect("Cannot convert output of `uname` to UTF8!")
+                .trim()
                 == "Darwin"
             {
                 return DisplayServer::Darwin;
