@@ -1176,8 +1176,8 @@ fn show(
             "password" => (first_line(&output), first_line(&output)),
             key => {
                 let key_to_search = match key {
-                    "otp" => "otpauth",
-                    k => k,
+                    "otp" => String::from("otpauth:"),
+                    k => format!("{}:", k),
                 };
                 let mut lines = output.split('\n');
                 let value = loop {
@@ -1186,7 +1186,7 @@ fn show(
                         key,
                         agefile.display()
                     ))?;
-                    if !line.starts_with(key_to_search) {
+                    if !line.starts_with(&key_to_search) {
                         continue;
                     }
                     break line[(key_to_search.len() + 1)..].trim();
