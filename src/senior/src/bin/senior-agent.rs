@@ -65,8 +65,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 // read
                 let key = &buffer[2..];
                 match passphrases.contains_key(key) {
-                    true => write!(&mut conn, "o: {}\n", &passphrases[key])?,
-                    false => write!(&mut conn, "e: Key {} is not present!\n", key)?,
+                    true => writeln!(&mut conn, "o: {}", &passphrases[key])?,
+                    false => writeln!(&mut conn, "e: Key {} is not present!", key)?,
                 }
             }
             "w" => {
@@ -79,10 +79,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                     if c == ' ' && !prev_char_was_backslash {
                         separator_index = i;
                         break;
-                    } else if c == '\\' {
-                        prev_char_was_backslash = true;
                     } else {
-                        prev_char_was_backslash = false;
+                        prev_char_was_backslash = c == '\\';
                     }
                 }
                 let key = buffer[2..(separator_index + 2)].to_owned();
@@ -91,7 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 passphrases.insert(key, pass);
             }
             _ => {
-                write!(&mut conn, "e: Command not implemented!")?;
+                writeln!(&mut conn, "e: Command not implemented!")?;
                 continue;
             }
         }
