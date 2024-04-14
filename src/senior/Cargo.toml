@@ -7,19 +7,19 @@ default-run = "senior"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-age = { version = "0.9", features = ["ssh"] }
+age = { version = "0.10", features = ["ssh"] }
 atty = "0.2"
 base32 = "0.4"
 chrono = "0.4"
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 interprocess = "1.2"
 rpassword = "7.3"
 sysinfo = "0.30"
 tempdir = "0.3"
 thotp = "0.1"
-walkdir = "2.4"
+walkdir = "2.5"
 
 [build-dependencies]
-clap = { version = "4.4", features = ["derive", "string"] }
-clap_complete = "4.4"
+clap = { version = "4.5", features = ["derive", "string"] }
+clap_complete = "4.5"
 clap_mangen = "0.2"
