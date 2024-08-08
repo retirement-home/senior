@@ -119,7 +119,7 @@ fn agent_get_passphrase(key: &str) -> Result<Option<String>, Box<dyn Error>> {
 
 fn agent_set_passphrase(key: &str, passphrase: &str) -> Result<(), Box<dyn Error>> {
     let agent_is_running = System::new_all()
-        .processes_by_exact_name("senior-agent")
+        .processes_by_exact_name(OsStr::new("senior-agent"))
         .next()
         .and(Some(true))
         .unwrap_or(false);
@@ -347,7 +347,7 @@ fn setup_identity(store_dir: &Path, identity: &Option<String>) -> Result<String,
                                 let passphrase =
                                     rpassword::prompt_password("Unlock the supplied ssh key: ")?;
                                 let mut keygen_command = Command::new("ssh-keygen")
-                                    .args(["-y", "-P", &passphrase, "-f", &keyfile])
+                                    .args(["-y", "-P", &passphrase, "-f", keyfile])
                                     .output()?;
                                 if keygen_command.status.success() {
                                     // remove newline
@@ -361,7 +361,7 @@ fn setup_identity(store_dir: &Path, identity: &Option<String>) -> Result<String,
                             },
                             ssh::Identity::Unencrypted(_) => {
                                 let mut gen_pubkey = Command::new("ssh-keygen")
-                                    .args(["-y", "-f", &keyfile])
+                                    .args(["-y", "-f", keyfile])
                                     .output()?;
                                 gen_pubkey.status.exit_ok()?;
                                 // remove newline
@@ -970,7 +970,7 @@ fn git_commit(store_dir: &Path, message: &str) -> Result<(), Box<dyn Error>> {
     Command::new("git")
         .arg("-C")
         .arg(store_dir)
-        .args(["commit", "-m", &message])
+        .args(["commit", "-m", message])
         .status()?
         .exit_ok()
 }
@@ -1203,7 +1203,7 @@ fn show(
                             .1;
                         let secret = secret.split(&['=', '&']).next().unwrap_or(value);
                         _otp = thotp::otp(
-                            &base32::decode(base32::Alphabet::RFC4648 { padding: false }, secret)
+                            &base32::decode(base32::Alphabet::Rfc4648 { padding: false }, secret)
                                 .unwrap(),
                             SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() / 30,
                         )?;
@@ -1720,8 +1720,8 @@ fn git_remote_is_ahead(store_dir: &Path) -> bool {
         "git",
         "merge-base",
         "--is-ancestor",
-        &git_remote,
-        &git_local,
+        git_remote,
+        git_local,
     ]);
     match Command::new("git")
         .arg("-C")
