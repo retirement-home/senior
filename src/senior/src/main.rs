@@ -18,7 +18,7 @@ use age::secrecy::{ExposeSecret, Secret};
 use age::{self, ssh};
 use atty::Stream;
 use clap::Parser;
-use interprocess::local_socket::{LocalSocketStream, NameTypeSupport};
+use interprocess::local_socket::{self, prelude::*, GenericFilePath, GenericNamespaced, NameType};
 use sysinfo::System;
 use tempdir::TempDir;
 use walkdir::WalkDir;
@@ -86,11 +86,15 @@ fn get_display_server() -> DisplayServer {
     DisplayServer::Windows
 }
 
-fn agent_socket_name() -> &'static str {
-    use NameTypeSupport::*;
-    match NameTypeSupport::query() {
-        OnlyPaths => "/tmp/senior-agent.sock",
-        OnlyNamespaced | Both => "@senior-agent.sock",
+fn agent_socket_name() -> local_socket::Name<'static> {
+    if GenericNamespaced::is_supported() {
+        "@senior-agent.sock"
+            .to_ns_name::<GenericNamespaced>()
+            .unwrap()
+    } else {
+        "/tmp/senior-agent.sock"
+            .to_fs_name::<GenericFilePath>()
+            .unwrap()
     }
 }
 
@@ -98,7 +102,7 @@ fn agent_socket_name() -> &'static str {
 // returns Ok(None) if the agent does not have the password
 fn agent_get_passphrase(key: &str) -> Result<Option<String>, Box<dyn Error>> {
     let mut buffer = String::new();
-    let conn = match LocalSocketStream::connect(agent_socket_name()) {
+    let conn = match local_socket::Stream::connect(agent_socket_name()) {
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => return Ok(None),
         x => x?,
     };
@@ -117,51 +121,60 @@ fn agent_get_passphrase(key: &str) -> Result<Option<String>, Box<dyn Error>> {
     }
 }
 
-fn agent_set_passphrase(key: &str, passphrase: &str) -> Result<(), Box<dyn Error>> {
-    let agent_is_running = System::new_all()
-        .processes_by_exact_name(OsStr::new("senior-agent"))
-        .next()
-        .and(Some(true))
-        .unwrap_or(false);
-    let mut once = true;
-    let conn = loop {
-        match LocalSocketStream::connect(agent_socket_name()) {
-            Err(e) if once && !agent_is_running && e.kind() == io::ErrorKind::ConnectionRefused => {
-                once = false;
-                let child = match Command::new("senior-agent")
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::piped())
-                    .spawn()
+fn agent_set_passphrase(key: &str, passphrase: &str) {
+    fn agent_set_passphrase_helper(key: &str, passphrase: &str) -> Result<(), Box<dyn Error>> {
+        let agent_is_running = System::new_all()
+            .processes_by_exact_name(OsStr::new("senior-agent"))
+            .next()
+            .and(Some(true))
+            .unwrap_or(false);
+        let mut once = true;
+        let conn = loop {
+            match local_socket::Stream::connect(agent_socket_name()) {
+                Err(e)
+                    if once
+                        && !agent_is_running
+                        && e.kind() == io::ErrorKind::ConnectionRefused =>
                 {
-                    Err(e) if e.kind() == ErrorKind::NotFound => {
-                        eprintln!("Warning: Cannot find senior-agent!");
-                        return Ok(());
+                    once = false;
+                    let child = match Command::new("senior-agent")
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::piped())
+                        .spawn()
+                    {
+                        Err(e) if e.kind() == ErrorKind::NotFound => {
+                            eprintln!("Warning: Cannot find senior-agent!");
+                            return Ok(());
+                        }
+                        Err(e) => return Err(e.into()),
+                        Ok(c) => c,
+                    };
+                    let mut child_stdout = String::new();
+                    BufReader::new(child.stdout.unwrap()).read_line(&mut child_stdout)?;
+                    child_stdout.pop();
+                    if child_stdout.starts_with("Ready") {
+                        continue;
+                    } else {
+                        return Err(format!("senior-agent: {}", &child_stdout).into());
                     }
-                    Err(e) => return Err(e.into()),
-                    Ok(c) => c,
-                };
-                let mut child_stdout = String::new();
-                BufReader::new(child.stdout.unwrap()).read_line(&mut child_stdout)?;
-                child_stdout.pop();
-                if child_stdout.starts_with("Ready") {
-                    continue;
-                } else {
-                    return Err(format!("senior-agent: {}", &child_stdout).into());
                 }
+                x => break x?,
             }
-            x => break x?,
-        }
-    };
-    let mut conn = BufReader::new(conn);
-    conn.get_mut().write_all(
-        format!(
-            "w {} {}\n",
-            key.replace('\\', r"\\").replace(' ', r"\ "),
-            passphrase
-        )
-        .as_bytes(),
-    )?;
-    Ok(())
+        };
+        let mut conn = BufReader::new(conn);
+        conn.get_mut().write_all(
+            format!(
+                "w {} {}\n",
+                key.replace('\\', r"\\").replace(' ', r"\ "),
+                passphrase
+            )
+            .as_bytes(),
+        )?;
+        Ok(())
+    }
+    if let Err(e) = agent_set_passphrase_helper(key, passphrase) {
+        eprintln!("Could not save passphrase to senior-agent: {}", e);
+    }
 }
 
 // use pinentry if there is no tty
@@ -671,8 +684,8 @@ fn unlock_identity(identity_file: &Path) -> Result<Vec<Box<dyn age::Identity>>, 
                     agent_set_passphrase(
                         identity_file.to_str().unwrap(),
                         identity.to_string().expose_secret(),
-                    )?
-                };
+                    );
+                }
                 identities.push(Box::new(identity) as Box<dyn age::Identity>);
             }
             break;
@@ -689,7 +702,7 @@ fn unlock_identity(identity_file: &Path) -> Result<Vec<Box<dyn age::Identity>>, 
                     match k.decrypt(Secret::new(pass.clone())) {
                         Ok(k) => {
                             if !pass_is_from_agent {
-                                agent_set_passphrase(identity_file.to_str().unwrap(), &pass)?;
+                                agent_set_passphrase(identity_file.to_str().unwrap(), &pass);
                             }
                             break k;
                         }
@@ -1716,13 +1729,8 @@ fn git_remote_is_ahead(store_dir: &Path) -> bool {
         .lines()
         .next()
         .expect("There should be a current branch!");
-    let merge_base_cmd_str = format_cmd(&[
-        "git",
-        "merge-base",
-        "--is-ancestor",
-        git_remote,
-        git_local,
-    ]);
+    let merge_base_cmd_str =
+        format_cmd(&["git", "merge-base", "--is-ancestor", git_remote, git_local]);
     match Command::new("git")
         .arg("-C")
         .arg(store_dir)

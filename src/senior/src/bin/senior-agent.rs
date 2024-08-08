@@ -2,9 +2,11 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::io::{self, prelude::*, BufReader};
 
-use interprocess::local_socket::{LocalSocketListener, LocalSocketStream, NameTypeSupport};
+use interprocess::local_socket::{
+    prelude::*, GenericFilePath, GenericNamespaced, ListenerOptions, Stream,
+};
 
-fn handle_error(conn: io::Result<LocalSocketStream>) -> Option<LocalSocketStream> {
+fn handle_error(conn: io::Result<Stream>) -> Option<Stream> {
     match conn {
         Ok(c) => Some(c),
         Err(e) => {
@@ -15,19 +17,24 @@ fn handle_error(conn: io::Result<LocalSocketStream>) -> Option<LocalSocketStream
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let name = {
-        use NameTypeSupport::*;
-        match NameTypeSupport::query() {
-            OnlyPaths => "/tmp/senior-agent.sock",
-            OnlyNamespaced | Both => "@senior-agent.sock",
-        }
+    let (print_name, name) = if GenericNamespaced::is_supported() {
+        (
+            "@senior-agent.sock",
+            "@senior-agent.sock".to_ns_name::<GenericNamespaced>()?,
+        )
+    } else {
+        (
+            "/tmp/senior-agent.sock",
+            "/tmp/senior-agent.sock".to_fs_name::<GenericFilePath>()?,
+        )
     };
 
-    let listener = match LocalSocketListener::bind(name) {
+    let opts = ListenerOptions::new().name(name);
+    let listener = match opts.create_sync() {
         Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
             eprintln!(
                  "\
-    Error: could not start server because the socket file is occupied. Please check if {name} is in \
+    Error: could not start server because the socket file is occupied. Please check if {print_name} is in \
     use by another process and try again."
              );
             return Err(e.into());
@@ -85,7 +92,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
                 let key = buffer[2..(separator_index + 2)].to_owned();
                 let pass = buffer[(separator_index + 3)..].to_owned();
-                //println!("Writing passphrase {} for key {}.", &pass, &key);
                 passphrases.insert(key, pass);
             }
             _ => {
