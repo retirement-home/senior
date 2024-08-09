@@ -443,43 +443,44 @@ fn setup_identity(store_dir: &Path, identity: &Option<String>) -> Result<String,
     }
 }
 
-fn init_helper(
-    store_dir: &Path,
-    identity: Option<String>,
-    recipient_alias: Option<String>,
-) -> Result<(), Box<dyn Error>> {
-    // set up default values
-    let recipient_alias = recipient_alias.unwrap_or_else(|| {
-        env::var_os("USER")
-            .unwrap_or_else(|| {
-                env::var_os("USERNAME")
-                    .expect("Cannot get the username! Please manually supply a recipient-alias.")
-            })
-            .into_string()
-            .unwrap()
-    });
-
-    let pubkey = setup_identity(store_dir, &identity)?;
-
-    let recipients_dir = store_dir.join(".recipients");
-    let recipients_main = recipients_dir.join("main.txt");
-    let gitignore = store_dir.join(".gitignore");
-    // TODO: .gitattributes file
-
-    fs::create_dir_all(recipients_dir)?;
-    let mut gitignore_file = File::create(gitignore)?;
-    gitignore_file.write_all(b"/.identity.*\n")?;
-    let mut recipients_main_file = File::create(recipients_main)?;
-    write!(recipients_main_file, "# {}\n{}\n", recipient_alias, pubkey)?;
-    println!("Created {}", store_dir.display());
-    Ok(())
-}
-
 fn init(
     store_dir: &Path,
     identity: Option<String>,
     recipient_alias: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
+    fn init_helper(
+        store_dir: &Path,
+        identity: Option<String>,
+        recipient_alias: Option<String>,
+    ) -> Result<(), Box<dyn Error>> {
+        // set up default values
+        let recipient_alias = recipient_alias.unwrap_or_else(|| {
+            env::var_os("USER")
+                .unwrap_or_else(|| {
+                    env::var_os("USERNAME").expect(
+                        "Cannot get the username! Please manually supply a recipient-alias.",
+                    )
+                })
+                .into_string()
+                .unwrap()
+        });
+
+        let pubkey = setup_identity(store_dir, &identity)?;
+
+        let recipients_dir = store_dir.join(".recipients");
+        let recipients_main = recipients_dir.join("main.txt");
+        let gitignore = store_dir.join(".gitignore");
+        // TODO: .gitattributes file
+
+        fs::create_dir_all(recipients_dir)?;
+        let mut gitignore_file = File::create(gitignore)?;
+        gitignore_file.write_all(b"/.identity.*\n")?;
+        let mut recipients_main_file = File::create(recipients_main)?;
+        write!(recipients_main_file, "# {}\n{}\n", recipient_alias, pubkey)?;
+        println!("Created {}", store_dir.display());
+        Ok(())
+    }
+
     match init_helper(store_dir, identity, recipient_alias) {
         Err(e) => {
             // cleanup
@@ -561,51 +562,53 @@ fn format_cmd(cmd: &[&str]) -> String {
     s
 }
 
-fn git_clone_helper(
-    store_dir: &Path,
-    identity: Option<String>,
-    address: String,
-) -> Result<(), Box<dyn Error>> {
-    Command::new("git")
-        .args(["clone", &address])
-        .arg(store_dir)
-        .status()?
-        .exit_ok()?;
-    let pubkey = setup_identity(store_dir, &identity)?;
-
-    if identity.is_some() {
-        if let Some(filepos) = find_pubkey_in_recipients(&store_dir.join(".recipients"), &pubkey) {
-            println!(
-                "The public key of the supplied identity file is already a recipient in {}.",
-                filepos
-            );
-            println!("You should be able to decrypt passwords now.");
-            return Ok(());
-        }
-    }
-
-    let recipient_alias = env::var_os("USER").unwrap_or(OsString::from("<name of recipient>"));
-    println!("Tell an owner of the store to add you to the recipients! For this they should run the following command:");
-    println!(
-        "{}",
-        format_cmd(&[
-            "senior",
-            "-s",
-            store_dir.file_name().unwrap().to_str().unwrap(),
-            "add-recipient",
-            &pubkey,
-            recipient_alias.to_str().unwrap()
-        ])
-    );
-    println!("Note that their store name might differ.");
-    Ok(())
-}
-
 fn git_clone(
     store_dir: &Path,
     identity: Option<String>,
     address: String,
 ) -> Result<(), Box<dyn Error>> {
+    fn git_clone_helper(
+        store_dir: &Path,
+        identity: Option<String>,
+        address: String,
+    ) -> Result<(), Box<dyn Error>> {
+        Command::new("git")
+            .args(["clone", &address])
+            .arg(store_dir)
+            .status()?
+            .exit_ok()?;
+        let pubkey = setup_identity(store_dir, &identity)?;
+
+        if identity.is_some() {
+            if let Some(filepos) =
+                find_pubkey_in_recipients(&store_dir.join(".recipients"), &pubkey)
+            {
+                println!(
+                    "The public key of the supplied identity file is already a recipient in {}.",
+                    filepos
+                );
+                println!("You should be able to decrypt passwords now.");
+                return Ok(());
+            }
+        }
+
+        let recipient_alias = env::var_os("USER").unwrap_or(OsString::from("<name of recipient>"));
+        println!("Tell an owner of the store to add you to the recipients! For this they should run the following command:");
+        println!(
+            "{}",
+            format_cmd(&[
+                "senior",
+                "-s",
+                store_dir.file_name().unwrap().to_str().unwrap(),
+                "add-recipient",
+                &pubkey,
+                recipient_alias.to_str().unwrap()
+            ])
+        );
+        println!("Note that their store name might differ.");
+        Ok(())
+    }
+
     match git_clone_helper(store_dir, identity, address) {
         Err(e) => {
             // cleanup
@@ -1852,7 +1855,7 @@ fn get_canonicalised_identity_file(
 
 fn home() -> PathBuf {
     PathBuf::from(env::var_os("HOME").unwrap_or_else(|| {
-        env::var_os("USERPROFILE").expect("Cannot get the users home directory!")
+        env::var_os("USERPROFILE").expect("Cannot get the user's home directory!")
     }))
 }
 
