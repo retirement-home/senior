@@ -88,7 +88,7 @@ fn get_display_server() -> DisplayServer {
 
 fn agent_socket_name() -> local_socket::Name<'static> {
     if GenericNamespaced::is_supported() {
-        "@senior-agent.sock"
+        "senior-agent.sock"
             .to_ns_name::<GenericNamespaced>()
             .unwrap()
     } else {

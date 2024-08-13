@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (print_name, name) = if GenericNamespaced::is_supported() {
         (
             "@senior-agent.sock",
-            "@senior-agent.sock".to_ns_name::<GenericNamespaced>()?,
+            "senior-agent.sock".to_ns_name::<GenericNamespaced>()?,
         )
     } else {
         (
