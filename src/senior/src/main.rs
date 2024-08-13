@@ -14,7 +14,7 @@ use std::process::{self, ChildStdout, Command, ExitStatus, Stdio};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{env, str::FromStr};
 
-use senior::socket_name;
+use senior::{geteuid, socket_name};
 
 use age::secrecy::{ExposeSecret, Secret};
 use age::{self, ssh};
@@ -93,7 +93,12 @@ fn get_display_server() -> DisplayServer {
 fn agent_get_passphrase(key: &str) -> Result<Option<String>, Box<dyn Error>> {
     let mut buffer = String::new();
     let conn = match local_socket::Stream::connect(socket_name().1) {
-        Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => return Ok(None),
+        Err(e)
+            if e.kind() == io::ErrorKind::ConnectionRefused
+                || e.kind() == io::ErrorKind::NotFound =>
+        {
+            return Ok(None)
+        }
         x => x?,
     };
     let mut conn = BufReader::new(conn);
@@ -115,6 +120,7 @@ fn agent_set_passphrase(key: &str, passphrase: &str) {
     fn agent_set_passphrase_helper(key: &str, passphrase: &str) -> Result<(), Box<dyn Error>> {
         let agent_is_running = System::new_all()
             .processes_by_exact_name(OsStr::new("senior-agent"))
+            .filter(|p| **p.user_id().unwrap() == unsafe { geteuid() })
             .next()
             .and(Some(true))
             .unwrap_or(false);
@@ -124,7 +130,8 @@ fn agent_set_passphrase(key: &str, passphrase: &str) {
                 Err(e)
                     if once
                         && !agent_is_running
-                        && e.kind() == io::ErrorKind::ConnectionRefused =>
+                        && (e.kind() == io::ErrorKind::ConnectionRefused
+                            || e.kind() == io::ErrorKind::NotFound) =>
                 {
                     once = false;
                     let child = match Command::new("senior-agent")

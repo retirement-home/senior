@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
             eprintln!(
                  "\
-    Error: could not start server because the socket file is occupied. Please check if {print_name} is in \
+    Error: Could not start server because the socket file is occupied. Please check if {print_name} is in \
     use by another process and try again."
              );
             return Err(e.into());
