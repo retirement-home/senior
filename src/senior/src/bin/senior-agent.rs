@@ -1,10 +1,9 @@
+use senior::socket_name;
 use std::collections::HashMap;
 use std::error::Error;
 use std::io::{self, prelude::*, BufReader};
 
-use interprocess::local_socket::{
-    prelude::*, GenericFilePath, GenericNamespaced, ListenerOptions, Stream,
-};
+use interprocess::local_socket::{prelude::*, ListenerOptions, Stream};
 
 fn handle_error(conn: io::Result<Stream>) -> Option<Stream> {
     match conn {
@@ -17,17 +16,7 @@ fn handle_error(conn: io::Result<Stream>) -> Option<Stream> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let (print_name, name) = if GenericNamespaced::is_supported() {
-        (
-            "@senior-agent.sock",
-            "senior-agent.sock".to_ns_name::<GenericNamespaced>()?,
-        )
-    } else {
-        (
-            "/tmp/senior-agent.sock",
-            "/tmp/senior-agent.sock".to_fs_name::<GenericFilePath>()?,
-        )
-    };
+    let (print_name, name) = socket_name();
 
     let opts = ListenerOptions::new().name(name);
     let listener = match opts.create_sync() {

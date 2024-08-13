@@ -14,11 +14,13 @@ use std::process::{self, ChildStdout, Command, ExitStatus, Stdio};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{env, str::FromStr};
 
+use senior::socket_name;
+
 use age::secrecy::{ExposeSecret, Secret};
 use age::{self, ssh};
 use atty::Stream;
 use clap::Parser;
-use interprocess::local_socket::{self, prelude::*, GenericFilePath, GenericNamespaced, NameType};
+use interprocess::local_socket::{self, prelude::*};
 use sysinfo::System;
 use tempdir::TempDir;
 use walkdir::WalkDir;
@@ -86,23 +88,11 @@ fn get_display_server() -> DisplayServer {
     DisplayServer::Windows
 }
 
-fn agent_socket_name() -> local_socket::Name<'static> {
-    if GenericNamespaced::is_supported() {
-        "senior-agent.sock"
-            .to_ns_name::<GenericNamespaced>()
-            .unwrap()
-    } else {
-        "/tmp/senior-agent.sock"
-            .to_fs_name::<GenericFilePath>()
-            .unwrap()
-    }
-}
-
 // returns Ok(None) if the connection to the agent fails (because it is probably not running)
 // returns Ok(None) if the agent does not have the password
 fn agent_get_passphrase(key: &str) -> Result<Option<String>, Box<dyn Error>> {
     let mut buffer = String::new();
-    let conn = match local_socket::Stream::connect(agent_socket_name()) {
+    let conn = match local_socket::Stream::connect(socket_name().1) {
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => return Ok(None),
         x => x?,
     };
@@ -130,7 +120,7 @@ fn agent_set_passphrase(key: &str, passphrase: &str) {
             .unwrap_or(false);
         let mut once = true;
         let conn = loop {
-            match local_socket::Stream::connect(agent_socket_name()) {
+            match local_socket::Stream::connect(socket_name().1) {
                 Err(e)
                     if once
                         && !agent_is_running
