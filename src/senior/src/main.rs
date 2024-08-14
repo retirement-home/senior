@@ -545,7 +545,13 @@ fn format_arg(arg: &str) -> String {
         .any(|&c| arg.contains(c))
     {
         s.push('"');
-        s.push_str(&arg.replace('"', "\\\""));
+        s.push_str(
+            &arg.replace('`', r"\`")
+                .replace('!', r"\!")
+                .replace('$', r"\$")
+                .replace('\\', "\"'\\'\"")
+                .replace('"', "\\\""),
+        );
         s.push('"');
     } else {
         s.push_str(arg);
