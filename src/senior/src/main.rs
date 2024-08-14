@@ -120,19 +120,19 @@ fn agent_set_passphrase(key: &str, passphrase: &str) {
     fn agent_set_passphrase_helper(key: &str, passphrase: &str) -> Result<(), Box<dyn Error>> {
         let agent_is_running = System::new_all()
             .processes_by_exact_name(OsStr::new("senior-agent"))
-            .filter(|p| **p.user_id().unwrap() == unsafe { geteuid() })
-            .next()
-            .and(Some(true))
-            .unwrap_or(false);
+            .any(|p| **p.user_id().unwrap() == unsafe { geteuid() });
         let mut once = true;
         let conn = loop {
             match local_socket::Stream::connect(socket_name().1) {
                 Err(e)
                     if once
-                        && !agent_is_running
                         && (e.kind() == io::ErrorKind::ConnectionRefused
                             || e.kind() == io::ErrorKind::NotFound) =>
                 {
+                    if agent_is_running {
+                        return Err(format!("senior-agent is running, but no socket connection could be established: {}", e).into());
+                    }
+                    // Try once to start senior-agent
                     once = false;
                     let child = match Command::new("senior-agent")
                         .stdin(Stdio::null())
@@ -245,9 +245,13 @@ fn get_or_ask_passphrase(
     let prompt = format!("Enter passphrase to unlock {}", key);
     *try_counter += 1;
     Ok(if *try_counter == 1 {
-        match agent_get_passphrase(key)? {
-            None => (prompt_password(&prompt)?, false),
-            Some(p) => (p, true),
+        match agent_get_passphrase(key) {
+            Err(e) => {
+                eprintln!("Unexpected error with socket of senior-agent: {}", e);
+                (prompt_password(&prompt)?, false)
+            }
+            Ok(None) => (prompt_password(&prompt)?, false),
+            Ok(Some(p)) => (p, true),
         }
     } else {
         (prompt_password(&prompt)?, false)

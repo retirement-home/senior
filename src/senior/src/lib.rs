@@ -1,4 +1,5 @@
 use interprocess::local_socket::{self, prelude::*, GenericFilePath, GenericNamespaced};
+use std::env;
 use std::path::PathBuf;
 
 #[link(name = "c")]
@@ -7,15 +8,18 @@ extern "C" {
 }
 
 pub fn socket_name() -> (String, local_socket::Name<'static>) {
-    let uid = unsafe { geteuid() };
-    let mut run_user = PathBuf::from("/run/user");
-    run_user.push(uid.to_string());
-    if run_user.exists() && GenericFilePath::is_supported() {
-        run_user.push("senior-agent.sock");
-        let path = run_user.to_str().unwrap().to_string();
-        return (path.clone(), path.to_fs_name::<GenericFilePath>().unwrap());
+    if let Some(runtime_dir) = env::var_os("XDG_RUNTIME_DIR") {
+        if GenericFilePath::is_supported() {
+            let mut path = PathBuf::from(runtime_dir);
+            if path.is_dir() {
+                path.push("senior-agent.sock");
+                let path = path.to_str().unwrap().to_string();
+                return (path.clone(), path.to_fs_name::<GenericFilePath>().unwrap());
+            }
+        }
     }
 
+    let uid = unsafe { geteuid() };
     let name = format!("senior-agent-{}.sock", uid);
     if GenericNamespaced::is_supported() {
         (
