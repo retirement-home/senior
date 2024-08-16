@@ -7,7 +7,7 @@ extern "C" {
     pub fn geteuid() -> u32;
 }
 
-pub fn socket_name() -> (String, local_socket::Name<'static>) {
+pub fn get_socket_name() -> (String, local_socket::Name<'static>) {
     if let Some(runtime_dir) = env::var_os("XDG_RUNTIME_DIR") {
         if GenericFilePath::is_supported() {
             let mut path = PathBuf::from(runtime_dir);

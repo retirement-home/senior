@@ -14,7 +14,7 @@ use std::process::{self, ChildStdout, Command, ExitStatus, Stdio};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{env, str::FromStr};
 
-use senior::{geteuid, socket_name};
+use senior::{geteuid, get_socket_name};
 
 use age::secrecy::{ExposeSecret, Secret};
 use age::{self, ssh};
@@ -92,7 +92,7 @@ fn get_display_server() -> DisplayServer {
 // returns Ok(None) if the agent does not have the password
 fn agent_get_passphrase(key: &str) -> Result<Option<String>, Box<dyn Error>> {
     let mut buffer = String::new();
-    let conn = match local_socket::Stream::connect(socket_name().1) {
+    let conn = match local_socket::Stream::connect(get_socket_name().1) {
         Err(e)
             if e.kind() == io::ErrorKind::ConnectionRefused
                 || e.kind() == io::ErrorKind::NotFound =>
@@ -121,9 +121,10 @@ fn agent_set_passphrase(key: &str, passphrase: &str) {
         let agent_is_running = System::new_all()
             .processes_by_exact_name(OsStr::new("senior-agent"))
             .any(|p| **p.user_id().unwrap() == unsafe { geteuid() });
+        let (socket_print_name, socket_name) = get_socket_name();
         let mut once = true;
         let conn = loop {
-            match local_socket::Stream::connect(socket_name().1) {
+            match local_socket::Stream::connect(socket_name.clone()) {
                 Err(e)
                     if once
                         && (e.kind() == io::ErrorKind::ConnectionRefused
@@ -134,6 +135,12 @@ fn agent_set_passphrase(key: &str, passphrase: &str) {
                     }
                     // Try once to start senior-agent
                     once = false;
+                    // Remove zombie socket file
+                    let socket_path = PathBuf::from(&socket_print_name);
+                    if socket_path.exists() {
+                        eprintln!("senior-agent is not running, but {} exists. Deleting zombie socket file...", socket_path.display());
+                        std::fs::remove_file(&socket_path)?;
+                    }
                     let child = match Command::new("senior-agent")
                         .stdin(Stdio::null())
                         .stdout(Stdio::piped())

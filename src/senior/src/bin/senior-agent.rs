@@ -1,4 +1,5 @@
-use senior::socket_name;
+use senior::get_socket_name;
+
 use std::collections::HashMap;
 use std::error::Error;
 use std::io::{self, prelude::*, BufReader};
@@ -16,7 +17,7 @@ fn handle_error(conn: io::Result<Stream>) -> Option<Stream> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let (print_name, name) = socket_name();
+    let (print_name, name) = get_socket_name();
 
     let opts = ListenerOptions::new().name(name);
     let listener = match opts.create_sync() {
