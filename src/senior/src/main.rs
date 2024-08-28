@@ -14,7 +14,7 @@ use std::process::{self, ChildStdout, Command, ExitStatus, Stdio};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use std::{env, str::FromStr};
 
-use senior::{geteuid, get_socket_name};
+use senior::{get_socket_name, geteuid};
 
 use age::secrecy::{ExposeSecret, Secret};
 use age::{self, ssh};
