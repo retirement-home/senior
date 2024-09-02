@@ -643,13 +643,21 @@ fn git_clone(
 
 // resolve symlinks even if the end of the path does not exist
 fn canonicalise(path: &Path) -> std::io::Result<PathBuf> {
-    if path.exists() {
-        path.canonicalize()
-    } else {
-        let parent = path.parent().unwrap();
-        let filename = path.file_name().unwrap_or(OsStr::new(".."));
-        Ok(canonicalise(parent)?.join(filename))
+    fn canonicalise_helper(path: &Path) -> std::io::Result<PathBuf> {
+        if path.exists() {
+            path.canonicalize()
+        } else {
+            let parent = canonicalise_helper(path.parent().unwrap())?;
+            match path.file_name() {
+                Some(filename) => Ok(parent.join(filename)),
+                None => Ok(parent.parent().unwrap().to_path_buf()),
+            }
+        }
     }
+
+    // After one run paths like "nonexistdir/../existsymlink/existfile" are simplified to
+    // "existsymlink/existfile". A second run will then resolve all existing symlinks.
+    canonicalise_helper(&canonicalise_helper(path)?)
 }
 
 fn unlock_identity(identity_file: &Path) -> Result<Vec<Box<dyn age::Identity>>, Box<dyn Error>> {
@@ -1849,6 +1857,9 @@ fn get_canonicalised_identity_file(
         senior_dir.display()
     ))?;
     let canon_store = senior_dir.join(canon_store);
+    if !canon_store.is_dir() {
+        return Err(format!("No such store directory: {}", canon_store.display()).into());
+    }
     let mut identity_filenames = [
         ".identity.txt",
         ".identity.ssh",
@@ -1861,7 +1872,7 @@ fn get_canonicalised_identity_file(
             "Cannot find any identity file in store {}!",
             canon_store.display()
         ))?);
-        if candidate.is_file() || candidate.is_symlink() {
+        if candidate.is_file() {
             break Ok(candidate);
         }
     }
