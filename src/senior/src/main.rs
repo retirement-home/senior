@@ -1221,7 +1221,7 @@ fn show(
                 let value = loop {
                     let line = lines.next().ok_or(format!(
                         "Cannot find key '{}' in password file {}!",
-                        key,
+                        &key_to_search[..(key_to_search.len()-1)],
                         agefile.display()
                     ))?;
                     if !line.starts_with(&key_to_search) {
