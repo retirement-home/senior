@@ -1845,8 +1845,8 @@ fn get_canonicalised_identity_file(
 ) -> Result<PathBuf, Box<dyn Error>> {
     let name_path = store_dir.join(name);
     let canon_name_path = canonicalise(&name_path)?;
-    let senior_dir = store_dir.parent().unwrap();
-    let canon_store = canon_name_path.strip_prefix(senior_dir).or(Err(format!(
+    let senior_dir = store_dir.parent().unwrap().canonicalize()?;
+    let canon_store = canon_name_path.strip_prefix(&senior_dir).or(Err(format!(
         "Path {} is outside of the senior directory {}!",
         name_path.display(),
         senior_dir.display()
