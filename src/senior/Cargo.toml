@@ -14,7 +14,7 @@ chrono = "0.4"
 clap = { version = "4.5", features = ["derive"] }
 interprocess = "2.2"
 rpassword = "7.3"
-sysinfo = "0.31"
+sysinfo = "0.32"
 tempdir = "0.3"
 thotp = "0.1"
 walkdir = "2.5"
