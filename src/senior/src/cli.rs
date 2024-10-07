@@ -53,7 +53,7 @@ pub enum CliCommand {
         /// Show only this key;
         /// "password" shows the first line;
         /// "otp" generates the one-time password
-        #[arg(short, long, value_name = "otp|login|email|...")]
+        #[arg(short, long, value_name = "otp|user|email|...")]
         key: Option<String>,
 
         /// Add the value to the clipboard
