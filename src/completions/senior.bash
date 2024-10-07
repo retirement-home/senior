@@ -159,7 +159,8 @@ _senior() {
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
-            local prefix=$(senior print-dir)/..
+            local prefix="$(senior print-dir)"
+            prefix="$(dirname "$prefix")"
             local stores=( ${prefix}/* )
             stores=( ${stores[@]#"$prefix"/} )
             case "${prev}" in

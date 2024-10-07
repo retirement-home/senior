@@ -1,7 +1,8 @@
 #compdef senior
 
 _senior_stores() {
-	local prefix=$(senior print-dir)/..
+	local prefix="$(senior print-dir)"
+	prefix="$(dirname "$prefix")"
 	local stores=( ${prefix}/* )
 	stores=( ${stores[@]#"$prefix"/} )
 	_describe 'command' stores
