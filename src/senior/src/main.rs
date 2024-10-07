@@ -451,6 +451,15 @@ fn setup_identity(store_dir: &Path, identity: &Option<String>) -> Result<String,
     }
 }
 
+fn user_at_host() -> String {
+    let mut user_at_host = whoami::username();
+    if let Ok(host) = whoami::fallible::hostname() {
+        user_at_host.push('@');
+        user_at_host.push_str(&host);
+    }
+    user_at_host
+}
+
 fn init(
     store_dir: &Path,
     identity: Option<String>,
@@ -462,16 +471,7 @@ fn init(
         recipient_alias: Option<String>,
     ) -> Result<(), Box<dyn Error>> {
         // set up default values
-        let recipient_alias = recipient_alias.unwrap_or_else(|| {
-            env::var_os("USER")
-                .unwrap_or_else(|| {
-                    env::var_os("USERNAME").expect(
-                        "Cannot get the username! Please manually supply a recipient-alias.",
-                    )
-                })
-                .into_string()
-                .unwrap()
-        });
+        let recipient_alias = recipient_alias.unwrap_or_else(user_at_host);
 
         let pubkey = setup_identity(store_dir, &identity)?;
 
@@ -606,7 +606,6 @@ fn git_clone(
             }
         }
 
-        let recipient_alias = env::var_os("USER").unwrap_or(OsString::from("<name of recipient>"));
         println!("Tell an owner of the store to add you to the recipients! For this they should run the following command:");
         println!(
             "{}",
@@ -616,7 +615,7 @@ fn git_clone(
                 store_dir.file_name().unwrap().to_str().unwrap(),
                 "add-recipient",
                 &pubkey,
-                recipient_alias.to_str().unwrap()
+                &user_at_host(),
             ])
         );
         println!("Note that their store name might differ.");
@@ -1221,7 +1220,7 @@ fn show(
                 let value = loop {
                     let line = lines.next().ok_or(format!(
                         "Cannot find key '{}' in password file {}!",
-                        &key_to_search[..(key_to_search.len()-1)],
+                        &key_to_search[..(key_to_search.len() - 1)],
                         agefile.display()
                     ))?;
                     if !line.starts_with(&key_to_search) {
