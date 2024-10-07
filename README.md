@@ -49,7 +49,7 @@ senior clone git@gitlab.com:exampleuser/mystore.git
 Without specifying another store name (using `-s`), the default name will be `mystore` in this example.
 Someone who already has access to the store can then add you to the recipients via
 ```sh
-senior add-recipient "<PUBLIC KEY>" "<ALIAS>"
+senior add-recipient <PUBLIC KEY> <ALIAS>
 ```
 
 ### Use an Existing Identity
