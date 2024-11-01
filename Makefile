@@ -8,7 +8,7 @@ ZSHCOMPLETION := $(PREFIX)/local/share/zsh/site-functions/_senior
 BASHCOMPLETION := $(PREFIX)/local/share/bash-completion/completions/senior
 MANDIR := $(PREFIX)/local/share/man/man1
 
-RUSTDIR := src/senior
+RUSTDIR := src/seniorpw
 
 build: $(RUSTDIR)/target/release/senior $(RUSTDIR)/target/release/senior-agent src/man/senior.1
 
