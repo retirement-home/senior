@@ -12,7 +12,7 @@ RUSTDIR := src/seniorpw
 
 build: $(RUSTDIR)/target/release/senior $(RUSTDIR)/target/release/senior-agent src/man/senior.1
 
-$(RUSTDIR)/target/release/senior $(RUSTDIR)/target/release/senior-agent src/man/senior.1: src/senior/src/*
+$(RUSTDIR)/target/release/senior $(RUSTDIR)/target/release/senior-agent src/man/senior.1: $(RUSTDIR)/src/*
 	cargo build --manifest-path $(RUSTDIR)/Cargo.toml --bins --locked --release --target-dir $(RUSTDIR)/target
 
 help:
