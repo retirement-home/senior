@@ -1,8 +1,8 @@
-![senior](other/logo.svg)
+![seniorpw](other/logo.svg)
 
 A Password Manager Using [age](https://github.com/FiloSottile/age) for Encryption
 
-![senior demonstration](other/senior-demo.svg)
+![seniorpw demonstration](other/seniorpw-demo.svg)
 
 ## Contents
 - [Features](#features)
@@ -13,7 +13,7 @@ A Password Manager Using [age](https://github.com/FiloSottile/age) for Encryptio
 
 ## Features
 It is inspired by [pass](https://git.zx2c4.com/password-store/).
-senior's features are
+seniorpw's features are
 - Multiple stores
 - OTP support
 - Clipboard support for [Linux](https://kernel.org/) ([Wayland](https://wayland.freedesktop.org/) and [X11](https://www.x.org/wiki/)), [Termux](https://termux.dev/en/), [WSL](https://learn.microsoft.com/en-us/windows/wsl/about), [Darwin](https://opensource.apple.com/) ([macOS](https://www.apple.com/macos/))
@@ -182,9 +182,9 @@ On Termux you should omit the `sudo`.
 Make sure you have the dependencies installed (look at `depends` and `makedepends` in the [PKGBUILD](PKGBUILD)).
 
 ## Import from pass
-Use the script [pass2senior.py](src/importers/pass2senior.py) to import your passwords.
+Use the script [pass2seniorpw.py](src/importers/pass2seniorpw.py) to import your passwords.
 ```sh
-./pass2senior.py ~/.password-store "$(senior print-dir)"
+./pass2seniorpw.py ~/.password-store "$(senior print-dir)"
 # set a passphrase
 senior change-passphrase
 ```

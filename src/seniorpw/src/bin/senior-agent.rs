@@ -1,4 +1,4 @@
-use senior::get_socket_name;
+use seniorpw::get_socket_name;
 
 use std::collections::HashMap;
 use std::error::Error;

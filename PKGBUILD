@@ -1,17 +1,17 @@
-# Maintainer: Stefan <stefangehr@protonmail.com>
+# Maintainer: Stefan <stefan@gehr.xyz>
 pkgname=senior
-pkgver=r142.0ca64d1
+pkgver=r201.f6a8c3b
 pkgrel=1
 pkgdesc='password manager using age as backend; inspired by pass'
 arch=('any')
-url='https://gitlab.com/retirement-home/senior'
+url='https://gitlab.com/retirement-home/seniorpw'
 license=('AGPL3')
 depends=(tree)
 optdepends=(git wl-clipboard)
 makedepends=(cargo git)
 source=("git+${url}.git")
 md5sums=('SKIP')
-rustdir="src/senior"
+rustdir="src/seniorpw"
 
 pkgver() {
 	cd "$pkgname"

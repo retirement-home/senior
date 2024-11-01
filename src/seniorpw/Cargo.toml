@@ -1,10 +1,13 @@
 [package]
-name = "senior"
-version = "0.6.0"
+name = "seniorpw"
+version = "0.7.0"
 edition = "2021"
 default-run = "senior"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "senior"
+path = "src/main.rs"
 
 [dependencies]
 age = { version = "0.10", features = ["ssh"] }
